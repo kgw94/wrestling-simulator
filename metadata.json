@@ -1,0 +1,6 @@
+{
+  "name": "Wrestling Booking Simulator",
+  "description": "An interactive, turn-based wrestling booking simulator modeled after classic EWR and TEW, featuring roster management, segment booking, match evaluation engine, championships, feuds, and dynamic world progression.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

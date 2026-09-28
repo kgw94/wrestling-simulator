@@ -1,0 +1,1163 @@
+import { 
+  Segment, 
+  SegmentEvaluation, 
+  ShowResult, 
+  Promotion, 
+  Wrestler, 
+  Feud, 
+  FinancialReport, 
+  NewsItem, 
+  Difficulty,
+  PPVEvent,
+  LockerRoomIncident,
+  StorylineArc
+} from '../types';
+import { 
+  DEFAULT_PPV_CALENDAR, 
+  DEFAULT_CUSTOM_MATCH_RULES, 
+  SAMPLE_INCIDENTS_POOL,
+  calculateHallOfFameScorecard
+} from '../data/customDefaults';
+
+export function calculateStarRating(score: number): { stars: number; starString: string } {
+  if (score >= 95) return { stars: 5.0, starString: '5.00 Stars ★★★★★' };
+  if (score >= 90) return { stars: 4.5, starString: '4.50 Stars ★★★★½' };
+  if (score >= 84) return { stars: 4.0, starString: '4.00 Stars ★★★★' };
+  if (score >= 76) return { stars: 3.5, starString: '3.50 Stars ★★★½' };
+  if (score >= 68) return { stars: 3.0, starString: '3.00 Stars ★★★' };
+  if (score >= 60) return { stars: 2.5, starString: '2.50 Stars ★★½' };
+  if (score >= 50) return { stars: 2.0, starString: '2.00 Stars ★★' };
+  if (score >= 40) return { stars: 1.5, starString: '1.50 Stars ★½' };
+  if (score >= 30) return { stars: 1.0, starString: '1.00 Stars ★' };
+  if (score >= 18) return { stars: 0.5, starString: '0.50 Stars ½★' };
+  return { stars: 0.0, starString: 'DUD (Minus Stars)' };
+}
+
+/**
+ * EWR/TEW-style segment evaluation engine
+ */
+export function evaluateSegment(
+  segment: Segment,
+  allSegments: Segment[],
+  roster: Wrestler[],
+  feuds: Feud[],
+  promotion?: Promotion
+): SegmentEvaluation {
+  const participants = segment.participantIds
+    .map(id => roster.find(w => w.id === id))
+    .filter((w): w is Wrestler => Boolean(w));
+
+  const notes: string[] = [];
+  let score = 50;
+  let workratePart = 0;
+  let overnessPart = 0;
+  let micPart = 0;
+  let feudBonus = 0;
+  let staminaFatiguePenalty = 0;
+  let durationMismatchPenalty = 0;
+  let overusePenalty = 0;
+  let finishPenalty = 0;
+
+  if (participants.length === 0) {
+    return {
+      segment,
+      score: 10,
+      stars: 0,
+      starString: 'DUD',
+      breakdown: { overnessPart: 0, feudBonus: 0, staminaFatiguePenalty: 0, durationMismatchPenalty: 0, overusePenalty: 0, finishPenalty: 0 },
+      recap: 'Empty segment with no valid wrestlers booked.',
+      notes: ['No participants were selected for this segment.']
+    };
+  }
+
+  // Calculate average stats among participants
+  const avgWorkrate = participants.reduce((acc, w) => acc + w.workrate, 0) / participants.length;
+  const avgOverness = participants.reduce((acc, w) => acc + w.overness, 0) / participants.length;
+  const avgMic = participants.reduce((acc, w) => acc + w.micSkills, 0) / participants.length;
+  const avgStamina = participants.reduce((acc, w) => acc + w.stamina, 0) / participants.length;
+  const avgFatigue = participants.reduce((acc, w) => acc + w.fatigue, 0) / participants.length;
+
+  // Gimmick Grade bonuses
+  participants.forEach(w => {
+    if (w.gimmick) {
+      if (w.gimmick.grade === 'S') {
+        score += 2;
+        notes.push(`S-Tier Gimmick (${w.name}): '${w.gimmick.name}' is ultra-over (+2 pts).`);
+      } else if (w.gimmick.grade === 'A') {
+        score += 1;
+      } else if (w.gimmick.grade === 'F') {
+        score -= 2;
+        notes.push(`Flop Gimmick (${w.name}): Crowd rejected the persona (-2 pts).`);
+      }
+    }
+  });
+
+  // Feud bonus: check if participants share a feud
+  const matchedFeud = feuds.find(f => {
+    const hasA = f.wrestlerAIds.some(id => segment.participantIds.includes(id));
+    const hasB = f.wrestlerBIds.some(id => segment.participantIds.includes(id));
+    return hasA && hasB;
+  });
+
+  if (matchedFeud) {
+    // Feud heat adds between 3 to 12 points
+    feudBonus = Math.round((matchedFeud.heat / 100) * 10);
+    notes.push(`Feud Heat Bonus (+${feudBonus} pts): Rivalry '${matchedFeud.name}' heightened crowd interest.`);
+  }
+
+  // Tag Team Chemistry bonus
+  if (promotion && promotion.tagTeams && (segment.matchType === 'Tag Team' || segment.matchType === '6-Man Tag')) {
+    const activeTeams = promotion.tagTeams.filter(t => t.isActive);
+    activeTeams.forEach(team => {
+      const teamPresent = team.memberIds.filter(id => segment.participantIds.includes(id)).length;
+      if (teamPresent >= 2) {
+        const chemBonus = Math.round((team.chemistry / 100) * 6);
+        score += chemBonus;
+        notes.push(`Tag Team Chemistry (+${chemBonus} pts): ${team.name} displayed synchronized tandem offense.`);
+      }
+    });
+  }
+
+  // Creative Philosophy Modifiers
+  if (promotion?.creativePhilosophy) {
+    if (promotion.creativePhilosophy === 'Workrate & Pure In-Ring Athleticism' && segment.category === 'Match' && avgWorkrate >= 75) {
+      score += 3;
+      notes.push(`Writers' Philosophy (+3 pts): Pure Workrate culture rewarded athletic masterpiece.`);
+    } else if (promotion.creativePhilosophy === 'Crash TV & Shock Value' && segment.category === 'Angle') {
+      score += 3;
+      notes.push(`Writers' Philosophy (+3 pts): Crash TV style generated unpredictable shock buzz.`);
+    } else if (promotion.creativePhilosophy === 'Sports Entertainment Spectacle' && avgMic >= 70) {
+      score += 2;
+      notes.push(`Writers' Philosophy (+2 pts): Sports entertainment theatricality resonated with the audience.`);
+    }
+  }
+
+  // Overuse penalty: check how many times each participant appears on this card
+  let maxAppearances = 1;
+  participants.forEach(w => {
+    const appearances = allSegments.filter(s => s.participantIds.includes(w.id)).length;
+    if (appearances > maxAppearances) maxAppearances = appearances;
+  });
+
+  if (maxAppearances >= 3) {
+    overusePenalty = 15;
+    notes.push('Severe Overuse Penalty (-15 pts): Wrestler(s) booked in 3+ segments on the same show.');
+  } else if (maxAppearances === 2 && segment.category === 'Match') {
+    // Only penalize double match bookings
+    const matchAppearances = allSegments.filter(s => s.category === 'Match' && s.participantIds.some(id => segment.participantIds.includes(id))).length;
+    if (matchAppearances > 1) {
+      overusePenalty = 8;
+      notes.push('Double Duty Penalty (-8 pts): Wrestler(s) wrestling twice in one night.');
+    }
+  }
+
+  // Repetitive finish penalty across the card
+  if (segment.category === 'Match' && segment.finishType) {
+    const sameFinishes = allSegments.filter(
+      s => s.category === 'Match' && s.finishType === segment.finishType && s.segmentNumber < segment.segmentNumber
+    ).length;
+    if (sameFinishes >= 2) {
+      finishPenalty = 6;
+      notes.push(`Repetitive Finish Penalty (-6 pts): Too many '${segment.finishType}' endings on this show.`);
+    }
+  }
+
+  if (segment.category === 'Match') {
+    // Formula: (Workrate x 0.6) + (Overness x 0.4) + Feud Heat + Fatigue/Stamina Factor
+    workratePart = avgWorkrate * 0.6;
+    overnessPart = avgOverness * 0.4;
+    score = workratePart + overnessPart + feudBonus;
+
+    // Fatigue & Stamina deficit
+    const duration = segment.durationMinutes || 12;
+    if (duration > avgStamina * 0.3) {
+      const deficit = Math.round(duration - (avgStamina * 0.3));
+      staminaFatiguePenalty += Math.min(18, Math.max(3, deficit * 1.5));
+      notes.push(`Stamina Deficit (-${staminaFatiguePenalty} pts): Wrestlers blown up by prolonged ${duration}-minute duration.`);
+    }
+
+    if (avgFatigue > 25) {
+      const fatigueDrain = Math.round((avgFatigue - 25) * 0.4);
+      staminaFatiguePenalty += fatigueDrain;
+      notes.push(`Fatigue Sluggishness (-${fatigueDrain} pts): Exhaustion took a toll on match speed.`);
+    }
+
+    // Match type & style synergy / mismatch
+    const matchType = segment.matchType || 'Singles';
+    if (duration >= 25 && avgWorkrate < 70) {
+      durationMismatchPenalty += 12;
+      notes.push('Mismatch Penalty (-12 pts): Low-workrate brawlers struggled in an overly lengthy technical clinic.');
+    }
+
+    if (matchType === 'Hardcore / No DQ' || matchType === 'Steel Cage') {
+      const brawlerCount = participants.filter(p => p.style === 'Hardcore' || p.style === 'Brawler').length;
+      if (brawlerCount >= 1) {
+        score += 4; // weapon synergy
+        notes.push('Stipulation Synergy (+4 pts): Brutal weapons suited the competitors\' aggressive styles.');
+      }
+    }
+
+    if (matchType === 'Ladder Match' || matchType === 'TLC (Tables Ladders Chairs)') {
+      const flyers = participants.filter(p => p.style === 'High Flyer').length;
+      if (flyers >= 1) {
+        score += 6;
+        notes.push('High Flying Synergy (+6 pts): Breathtaking aerial spots energized the arena.');
+      }
+    }
+
+    if (matchType === 'Hell in a Cell' || matchType === 'Elimination Chamber') {
+      score += 8;
+      notes.push(`Spectacle Structure (+8 pts): The imposing ${matchType} structure delivered intense drama.`);
+    }
+
+    if (matchType === 'Last Man Standing') {
+      score += 5;
+      notes.push('War of Attrition (+5 pts): Dramatic 10-counts kept the crowd on the edge of their seats.');
+    }
+
+    if (matchType === '6-Man Tag' || matchType === 'Battle Royal / Royal Rumble') {
+      score += 4;
+      notes.push(`Multi-Man Chaos (+4 pts): Fast transitions and high energy kept the pace vibrant.`);
+    }
+
+    // Custom Match Rule handling
+    const customRules = [...(promotion?.customMatchRules || []), ...DEFAULT_CUSTOM_MATCH_RULES];
+    if (segment.customMatchRuleId || matchType === 'Custom Match') {
+      const rule = customRules.find(r => r.id === segment.customMatchRuleId);
+      if (rule) {
+        const multBonus = Math.round((rule.workrateMultiplier - 1.0) * avgWorkrate * 0.4);
+        score += (multBonus + rule.spectacleBonus);
+        notes.push(`Custom Stipulation '${rule.name}' (+${rule.spectacleBonus + multBonus} pts): ${rule.description}`);
+      }
+    }
+
+    // Alignment dynamic: Face vs Heel has natural heat
+    const hasFace = participants.some(p => p.alignment === 'Face');
+    const hasHeel = participants.some(p => p.alignment === 'Heel');
+    if (hasFace && hasHeel) {
+      score += 3;
+    } else if (participants.every(p => p.alignment === 'Heel')) {
+      score -= 3;
+      notes.push('Heel vs. Heel (-3 pts): The crowd lacked a clear hero to rally behind.');
+    }
+
+    score = score - staminaFatiguePenalty - durationMismatchPenalty - overusePenalty - finishPenalty;
+  } else {
+    // Angle / Promo Quality: (Mic Skills / Charisma x 0.7) + Overness x 0.3
+    micPart = avgMic * 0.7;
+    overnessPart = avgOverness * 0.3;
+    score = micPart + overnessPart + feudBonus - overusePenalty;
+
+    const angleType = segment.angleType || 'In-Ring Promo';
+    if (angleType === 'Backstage Ambush' || angleType === 'Confrontation / Staredown' || angleType === 'Faction War / Gang Attack') {
+      score += 4; // high intensity angle
+      notes.push('High Stakes Angle (+4 pts): Electric confrontation captured fan buzz.');
+    }
+  }
+
+  // Title on the line bonus
+  if (segment.titleId && promotion && promotion.titles) {
+    const title = promotion.titles.find(t => t.id === segment.titleId);
+    if (title) {
+      const titleBonus = Math.round((title.prestige / 100) * 5) + (title.minWorkrateBonus || 0);
+      score += titleBonus;
+      notes.push(`Championship Stakes (+${titleBonus} pts for ${title.name})`);
+    }
+  }
+
+  // Clamping to 0-100 range with subtle randomness (+/- 2)
+  const variance = (Math.random() * 4) - 2;
+  score = Math.min(99, Math.max(12, Math.round(score + variance)));
+
+  const { stars, starString } = calculateStarRating(score);
+
+  // Generate narrative recap
+  const winner = roster.find(w => w.id === segment.winnerId);
+  const losers = participants.filter(w => w.id !== segment.winnerId);
+  let recap = '';
+
+  if (segment.category === 'Match') {
+    const matchTypeStr = segment.matchType || 'Singles Match';
+    const finishStr = segment.finishType || 'Clean Pinfall';
+    const durationStr = `${segment.durationMinutes || 12} minutes`;
+
+    if (winner && losers.length > 0) {
+      const loserNames = losers.map(l => l.name).join(' & ');
+      if (finishStr.includes('Clean')) {
+        recap = `${winner.name} defeated ${loserNames} in a thrilling ${durationStr} ${matchTypeStr} following their signature maneuver for a clean, decisive victory.`;
+      } else if (finishStr.includes('DQ') || finishStr.includes('Foreign')) {
+        recap = `${winner.name} was awarded the victory after ${loserNames} resorted to blatant weapon violence and suffered a disqualification at the ${durationStr} mark!`;
+      } else if (finishStr.includes('Distraction')) {
+        recap = `${winner.name} stole a victory over ${loserNames} after outside interference created chaos, securing a lightning fast rollup pinfall.`;
+      } else if (finishStr.includes('Turn') || finishStr.includes('Screwjob')) {
+        recap = `Shocking scenes! A shocking betrayal allowed ${winner.name} to steal the match from ${loserNames}, leaving the arena in absolute uproar!`;
+      } else {
+        recap = `${winner.name} overcame ${loserNames} in a hard-fought ${matchTypeStr} lasting ${durationStr}.`;
+      }
+    } else {
+      recap = `A chaotic ${matchTypeStr} featuring ${participants.map(p => p.name).join(', ')} ended in a wild no-contest after ${durationStr} of nonstop mayhem.`;
+    }
+  } else {
+    const angleTypeStr = segment.angleType || 'In-Ring Promo';
+    if (angleTypeStr === 'In-Ring Promo') {
+      recap = `${participants.map(p => p.name).join(' & ')} cut a venomous promo on the microphone, firing up the live crowd with razor-sharp verbal attacks.`;
+    } else if (angleTypeStr === 'Backstage Ambush') {
+      recap = `Backstage cameras caught violent mayhem as ${participants.map(p => p.name).join(' and ')} brawled wildly through gorilla position into catering!`;
+    } else if (angleTypeStr === 'Contract Signing') {
+      recap = `Tension reached a fever pitch during an official contract signing featuring ${participants.map(p => p.name).join(' & ')}, culminating in an overturned mahogany table and steel chair strikes!`;
+    } else {
+      recap = `A dramatic ${angleTypeStr} segment showcased ${participants.map(p => p.name).join(', ')}, creating tremendous buzz among the wrestling universe.`;
+    }
+  }
+
+  return {
+    segment,
+    score,
+    stars,
+    starString,
+    breakdown: {
+      workratePart: Math.round(workratePart),
+      overnessPart: Math.round(overnessPart),
+      micPart: Math.round(micPart),
+      feudBonus,
+      staminaFatiguePenalty,
+      durationMismatchPenalty,
+      overusePenalty,
+      finishPenalty
+    },
+    recap,
+    notes
+  };
+}
+
+/**
+ * Calculates overall show rating using EWR weighting:
+ * Main Event (35%), Upper Midcard (25%), Rest of Card (40%)
+ */
+export function calculateShowResult(
+  segments: Segment[],
+  roster: Wrestler[],
+  feuds: Feud[],
+  promotion: Promotion,
+  week: number,
+  year: number
+): ShowResult {
+  const evaluations: SegmentEvaluation[] = [];
+
+  segments.forEach((seg, idx) => {
+    // update segment number
+    const updated = { ...seg, segmentNumber: idx + 1 };
+    evaluations.push(evaluateSegment(updated, segments, roster, feuds, promotion));
+  });
+
+  const ppvSchedule = (promotion.ppvSchedule && promotion.ppvSchedule.length > 0) 
+    ? promotion.ppvSchedule 
+    : DEFAULT_PPV_CALENDAR;
+  const currentPPV = ppvSchedule.find(p => p.weekNumber === week);
+  const isPPV = Boolean(currentPPV);
+
+  if (evaluations.length === 0) {
+    return {
+      week,
+      year,
+      showName: currentPPV ? currentPPV.name : promotion.weeklyTVShow,
+      isPPV,
+      ppvEvent: currentPPV,
+      overallScore: 20,
+      starRating: '1.0 Star ★',
+      tvRating: 0.8,
+      viewers: '0.9M',
+      attendance: 1200,
+      gateRevenue: 24000,
+      ppvBuys: 0,
+      ppvRevenue: 0,
+      segmentEvaluations: [],
+      topSegmentScore: 20,
+      mainEventScore: 20,
+      networkFeedback: 'The broadcast was an unmitigated disaster with no booked segments.'
+    };
+  }
+
+  const scores = evaluations.map(e => e.score);
+  const topSegmentScore = Math.max(...scores);
+  const mainEvent = evaluations[evaluations.length - 1];
+  const mainEventScore = mainEvent ? mainEvent.score : scores[0];
+
+  let overallScore: number;
+  if (evaluations.length === 1) {
+    overallScore = scores[0];
+  } else if (evaluations.length === 2) {
+    overallScore = Math.round((mainEventScore * 0.6) + (scores[0] * 0.4));
+  } else {
+    // EWR weighting: Main Event = 35%, Upper Midcard (second-to-last or penultimate) = 25%, Rest = 40%
+    const upperMidcardScore = evaluations[evaluations.length - 2].score;
+    const otherScores = evaluations.slice(0, evaluations.length - 2).map(e => e.score);
+    const avgOther = otherScores.reduce((a, b) => a + b, 0) / (otherScores.length || 1);
+
+    overallScore = Math.round((mainEventScore * 0.35) + (upperMidcardScore * 0.25) + (avgOther * 0.40));
+  }
+
+  // If this is a PPV or Supercard, apply marquee prestige bonus
+  if (currentPPV) {
+    overallScore = Math.min(100, overallScore + Math.round((currentPPV.prestigeBonus || 10) * 0.4));
+  }
+
+  const { starString } = calculateStarRating(overallScore);
+
+  // TV Ratings calculation
+  // Scaled by overall score, promotion prestige, and network tier
+  const prestige = (promotion && typeof promotion.prestige === 'number' && !isNaN(promotion.prestige)) ? promotion.prestige : 70;
+  const fanbase = (promotion && typeof promotion.fanbase === 'number' && !isNaN(promotion.fanbase)) ? promotion.fanbase : 50000;
+  const baseRating = (overallScore / 30) + (prestige / 40);
+  const tvRating = parseFloat(Math.max(0.4, (baseRating + (Math.random() * 0.3 - 0.15))).toFixed(2));
+  const viewerCount = (tvRating * 1.25).toFixed(1) + 'M';
+
+  // Attendance & Gate
+  let attendance: number;
+  let gateRevenue: number;
+  let ppvBuys = 0;
+  let ppvRevenue = 0;
+
+  if (currentPPV) {
+    // PPV Attendance is scaled by stadium/arena capacity and show quality
+    const capacity = currentPPV.venueCapacity || 20000;
+    const fillRate = Math.min(1.0, Math.max(0.65, (overallScore / 80) * (currentPPV.isSupercard ? 1.15 : 0.95)));
+    attendance = Math.round(capacity * fillRate);
+    gateRevenue = attendance * (currentPPV.ticketPrice || 85);
+    // PPV Buys & Streaming Purchases
+    const baseBuys = Math.round(fanbase * (overallScore / 65) * (currentPPV.buyrateMultiplier || 1.3));
+    ppvBuys = Math.max(5000, baseBuys);
+    ppvRevenue = Math.round(ppvBuys * 44.99); // PPV gross revenue share
+  } else {
+    attendance = Math.round(Math.min(fanbase, Math.max(1500, (fanbase * 0.12) * (overallScore / 70)))) || 2000;
+    gateRevenue = attendance * 42;
+  }
+
+  // Network feedback
+  let networkFeedback = 'The network executives were reasonably pleased with this week\'s output.';
+  if (currentPPV) {
+    networkFeedback = `PPV SPECTACLE: '${currentPPV.name}' at ${currentPPV.venue} drew massive acclaim and ${attendance.toLocaleString()} roaring fans!`;
+  } else if (overallScore >= promotion.minNetworkRating + 12) {
+    networkFeedback = 'Executive Rave: Prime-time viewership crushed key demographics! Broadcasters are ecstatic.';
+  } else if (overallScore >= promotion.minNetworkRating) {
+    networkFeedback = 'Broadcaster Satisfied: Ratings hit the contractual benchmarks comfortably.';
+  } else if (overallScore >= promotion.minNetworkRating - 8) {
+    networkFeedback = 'Warning Memo: Network suits felt the show sagged in key quarters. Improvement demanded.';
+  } else {
+    networkFeedback = 'Severe Network Reprimand: Ratings fell off a cliff! Threat of cancellation looms unless numbers rebound immediately.';
+  }
+
+  return {
+    week,
+    year,
+    showName: currentPPV ? currentPPV.name : promotion.weeklyTVShow,
+    isPPV,
+    ppvEvent: currentPPV,
+    overallScore,
+    starRating: starString,
+    tvRating,
+    viewers: viewerCount,
+    attendance,
+    gateRevenue,
+    ppvBuys,
+    ppvRevenue,
+    segmentEvaluations: evaluations,
+    topSegmentScore,
+    mainEventScore,
+    networkFeedback
+  };
+}
+
+/**
+ * Dynamic World & Progression Engine:
+ * Processes Overness shifts, Fatigue, Injuries, Morale, Competitor News, and Financials.
+ */
+export function advanceWeekEngine(
+  currentState: {
+    promotion: Promotion;
+    currentWeek: number;
+    currentYear: number;
+    currentShowCard: Segment[];
+    showResult: ShowResult;
+    freeAgents: Wrestler[];
+    difficulty: Difficulty;
+  }
+): {
+  updatedPromotion: Promotion;
+  updatedFreeAgents: Wrestler[];
+  financialReport: FinancialReport;
+  newNews: NewsItem[];
+  nextWeek: number;
+  nextYear: number;
+} {
+  const { promotion, currentWeek, currentYear, currentShowCard, showResult, freeAgents, difficulty } = currentState;
+
+  const newNews: NewsItem[] = [];
+  const updatedRoster: Wrestler[] = promotion.roster.map(w => ({ ...w }));
+  const updatedTitles = promotion.titles.map(t => ({ ...t }));
+  const updatedFeuds = promotion.feuds.map(f => ({ ...f }));
+
+  // Track who was booked
+  const bookedWrestlerIds = new Set<string>();
+  currentShowCard.forEach(seg => {
+    seg.participantIds.forEach(id => bookedWrestlerIds.add(id));
+  });
+
+  // 1. Process Segment Outcomes for Booked Wrestlers
+  showResult.segmentEvaluations.forEach(ev => {
+    const { segment, score } = ev;
+    const participants = updatedRoster.filter(w => segment.participantIds.includes(w.id));
+
+    participants.forEach(w => {
+      // Stamina drain & fatigue accumulation
+      const duration = segment.durationMinutes || 10;
+      const fatigueGain = segment.category === 'Match' ? Math.round(duration * 0.8) : 2;
+      w.fatigue = Math.min(100, w.fatigue + fatigueGain);
+
+      // Overness changes:
+      // High star segments boost everybody slightly
+      if (score >= 82) {
+        w.overness = Math.min(100, w.overness + 1);
+      }
+
+      // Match winners and losers
+      if (segment.category === 'Match' && segment.winnerId) {
+        if (w.id === segment.winnerId) {
+          w.wins += 1;
+          const winBonus = score >= 75 ? 2 : 1;
+          w.overness = Math.min(100, w.overness + winBonus);
+          w.morale = Math.min(100, w.morale + 3);
+        } else {
+          w.losses += 1;
+          // Protected finishes (DQ, distraction) soften the overness hit
+          const isProtected = segment.finishType === 'Disqualification (DQ)' || segment.finishType === 'Distraction Rollup';
+          if (!isProtected && score < 75) {
+            w.overness = Math.max(10, w.overness - 1);
+          }
+          w.morale = Math.max(10, w.morale - (isProtected ? 1 : 2));
+        }
+      } else if (segment.category === 'Angle') {
+        // Promo overness bump if high score
+        if (score >= 80) {
+          w.overness = Math.min(100, w.overness + 1);
+          w.morale = Math.min(100, w.morale + 2);
+        }
+      }
+    });
+
+    // Feud progression
+    if (segment.feudId) {
+      const feud = updatedFeuds.find(f => f.id === segment.feudId);
+      if (feud) {
+        if (score >= 75) {
+          feud.heat = Math.min(100, feud.heat + Math.round((score - 70) * 0.3));
+          feud.momentum = feud.heat >= 85 ? 'White Hot' : feud.heat >= 75 ? 'Boiling Hot' : 'Simmering';
+        } else {
+          feud.heat = Math.max(15, feud.heat - 3);
+          feud.momentum = feud.heat < 45 ? 'Cooling Down' : 'Simmering';
+        }
+      }
+    }
+
+    // Title changes
+    if (segment.titleId && segment.winnerId) {
+      const title = updatedTitles.find(t => t.id === segment.titleId);
+      if (title) {
+        const isCurrentHolder = title.currentHolderIds.includes(segment.winnerId);
+        const segEval = showResult.segmentEvaluations?.find(se => se.segment.id === segment.id);
+        const eventName = showResult.isPPV && showResult.ppvEvent ? showResult.ppvEvent.name : promotion.weeklyTVShow;
+
+        if (isCurrentHolder) {
+          title.defenses += 1;
+          if (title.history && title.history.length > 0) {
+            title.history[0].defenses = title.defenses;
+          }
+          // Boost prestige slightly for classic defenses
+          if (segEval && segEval.score >= 80) {
+            title.prestige = Math.min(100, title.prestige + 1);
+          }
+        } else {
+          // New champion!
+          const winner = updatedRoster.find(w => w.id === segment.winnerId);
+          if (winner) {
+            // strip previous holders
+            title.currentHolderIds.forEach(prevId => {
+              const prevHolder = updatedRoster.find(w => w.id === prevId);
+              if (prevHolder) {
+                prevHolder.championshipIds = prevHolder.championshipIds.filter(id => id !== title.id);
+                prevHolder.morale = Math.max(20, prevHolder.morale - 8);
+              }
+            });
+
+            // Mark previous reign as concluded
+            if (title.history && title.history.length > 0 && !title.history[0].lostWeek) {
+              title.history[0].lostWeek = currentWeek;
+              title.history[0].lostYear = currentYear;
+              title.history[0].isCurrent = false;
+            }
+
+            title.currentHolderIds = [winner.id];
+            title.defenses = 0;
+            winner.championshipIds.push(title.id);
+            winner.overness = Math.min(100, winner.overness + 3);
+            winner.morale = Math.min(100, winner.morale + 15);
+            title.history.unshift({
+              id: `reign-${Date.now()}-${Math.random()}`,
+              reignNumber: title.history.length + 1,
+              holderNames: winner.name,
+              holderIds: [winner.id],
+              wonWeek: currentWeek,
+              wonYear: currentYear,
+              defenses: 0,
+              eventWonAt: eventName,
+              notes: `Won via ${segment.finishType || 'Pinfall'} (${segment.matchType || 'Match'})`,
+              reignRating: segEval?.starString || '★★★1/2',
+              isCurrent: true
+            });
+
+            newNews.push({
+              id: `news-title-${Date.now()}-${Math.random()}`,
+              week: currentWeek,
+              category: 'Promotion',
+              importance: 'High',
+              headline: `NEW CHAMPION: ${winner.name} captures the ${title.name}!`,
+              details: `In a historic turn of events, ${winner.name} hoisted the gold after a dramatic victory at ${eventName}.`
+            });
+          }
+        }
+      }
+    }
+  });
+
+  // 2. Process Rest and Morale for Unbooked Wrestlers
+  updatedRoster.forEach(w => {
+    if (!bookedWrestlerIds.has(w.id)) {
+      // Unbooked wrestler rests: fatigue recovers!
+      w.fatigue = Math.max(0, w.fatigue - 20);
+
+      // Main eventers & upper midcard get frustrated if left off TV
+      if (w.push === 'Main Eventer' || w.push === 'Upper Midcard') {
+        w.morale = Math.max(15, w.morale - 3);
+        if (w.morale <= 50 && Math.random() < 0.4) {
+          newNews.push({
+            id: `news-ego-${Date.now()}-${Math.random()}`,
+            week: currentWeek,
+            category: 'Wrestler',
+            importance: 'Medium',
+            headline: `${w.name} Voicing Frustration Backstage`,
+            details: `Sources report that ${w.name} was visibly agitated after being left off ${promotion.weeklyTVShow} this week and questioned management's creative direction.`
+          });
+        }
+      }
+    }
+
+    // Process ongoing injuries
+    if (w.injury.injured) {
+      if (w.injury.weeksRemaining && w.injury.weeksRemaining > 1) {
+        w.injury.weeksRemaining -= 1;
+      } else {
+        w.injury = { injured: false };
+        newNews.push({
+          id: `news-med-cleared-${Date.now()}-${Math.random()}`,
+          week: currentWeek,
+          category: 'Injury',
+          importance: 'Medium',
+          headline: `Medical Clearance: ${w.name} Ready to Return!`,
+          details: `Doctors have fully cleared ${w.name} to resume in-ring action following rehab.`
+        });
+      }
+    }
+  });
+
+  // Track Career Longevity in Simulator, Retirement Age & Retirement Risk for all roster members
+  updatedRoster.forEach(w => {
+    w.careerWeeksInSimulator = (w.careerWeeksInSimulator || Math.max(10, (w.age - 20) * 8)) + 1;
+    w.peakOverness = Math.max(w.overness, w.peakOverness || w.overness);
+
+    // Initialize retirement age based on style and age if not set
+    if (!w.retirementAge) {
+      const baseRetire = w.style === 'High Flyer' ? 40 : w.style === 'Hardcore' ? 41 : w.style === 'Powerhouse' ? 45 : 44;
+      w.retirementAge = Math.max(w.age + 2, baseRetire);
+    }
+    w.careerInjuriesCount = w.careerInjuriesCount || 0;
+    w.injuryHistory = w.injuryHistory || [];
+
+    // Calculate dynamic retirement risk based on age proximity & injury history
+    const injuryToll = w.careerInjuriesCount;
+    if (w.age >= w.retirementAge) {
+      w.retirementRisk = 'Imminent';
+    } else if (w.age >= w.retirementAge - 2 || injuryToll >= 3) {
+      w.retirementRisk = 'High';
+    } else if (w.age >= w.retirementAge - 4 || injuryToll >= 2) {
+      w.retirementRisk = 'Moderate';
+    } else {
+      w.retirementRisk = 'Low';
+    }
+  });
+
+  // 3. Dynamic Injury Engine on High Risk Segments
+  const injuryMultiplier = difficulty === 'Hard' ? 1.5 : difficulty === 'Easy' ? 0.6 : 1.0;
+  currentShowCard.forEach(seg => {
+    if (seg.category === 'Match') {
+      const isHighRisk = seg.matchType === 'Hardcore / No DQ' || seg.matchType === 'Steel Cage' || seg.matchType === 'Ladder Match';
+      const baseChance = isHighRisk ? 0.08 : 0.02;
+
+      seg.participantIds.forEach(id => {
+        const wrestler = updatedRoster.find(w => w.id === id);
+        if (wrestler && !wrestler.injury.injured) {
+          const fatigueRisk = wrestler.fatigue > 50 ? 0.05 : 0;
+          const roll = Math.random();
+          if (roll < (baseChance + fatigueRisk) * injuryMultiplier) {
+            const injuryList = [
+              { name: 'Sprained Ankle', weeks: 2 },
+              { name: 'Mild Concussion', weeks: 3 },
+              { name: 'Cracked Ribs', weeks: 4 },
+              { name: 'Torn Pectoral Muscle', weeks: 8 },
+              { name: 'Lacerated Forehead', weeks: 1 }
+            ];
+            const picked = injuryList[Math.floor(Math.random() * injuryList.length)];
+            wrestler.injury = {
+              injured: true,
+              name: picked.name,
+              weeksRemaining: picked.weeks
+            };
+            wrestler.morale = Math.max(10, wrestler.morale - 5);
+            wrestler.careerInjuriesCount = (wrestler.careerInjuriesCount || 0) + 1;
+            const logEntry = `${picked.name} (${picked.weeks} wks, Wk ${currentWeek})`;
+            wrestler.injuryHistory = [logEntry, ...(wrestler.injuryHistory || [])];
+
+            // Severe injury wear-and-tear accelerates natural retirement
+            if (picked.weeks >= 4 && wrestler.retirementAge) {
+              if (Math.random() < 0.6) {
+                wrestler.retirementAge = Math.max(wrestler.age, wrestler.retirementAge - 1);
+              }
+            }
+
+            newNews.push({
+              id: `news-injury-${Date.now()}-${Math.random()}`,
+              week: currentWeek,
+              category: 'Injury',
+              importance: 'High',
+              headline: `INJURY ALERT: ${wrestler.name} sidelined with ${picked.name}!`,
+              details: `During their brutal segment on this week's broadcast, ${wrestler.name} sustained a confirmed ${picked.name} (career injury #${wrestler.careerInjuriesCount}) and is projected out for ${picked.weeks} weeks.`
+            });
+          }
+        }
+      });
+    }
+  });
+
+  // 4. Competitor News Generation
+  const competitorStories = [
+    {
+      headline: 'Rival Promotion Smashes Buyrate Record',
+      details: 'Overseas rival Shin-Sekai Pro Wrestling drew a sellout Tokyo Dome crowd of 42,000 for their championship tournament finals.'
+    },
+    {
+      headline: 'Indie Sensation Enters Free Agency',
+      details: 'Lucha high-flyer Aero Kid has completed their indie commitments and is taking booking inquiries from major televised promotions.'
+    },
+    {
+      headline: 'Wrestling Observer Awards Five Stars',
+      details: 'Pundits praised a dramatic 35-minute iron man match on the independent circuit as an instant classic.'
+    },
+    {
+      headline: 'Rival Mainstream Giant Announces Stadium Tour',
+      details: 'Apex Pro Wrestling confirmed stadium dates across North America as broadcast ad revenue surges.'
+    },
+    {
+      headline: 'Backstage Brawl Shakes Underground Promotion',
+      details: 'Unconfirmed reports claim chairs and water bottles were hurled in a chaotic post-show locker room shouting match.'
+    }
+  ];
+
+  if (Math.random() < 0.7) {
+    const story = competitorStories[Math.floor(Math.random() * competitorStories.length)];
+    newNews.push({
+      id: `news-rival-${Date.now()}-${Math.random()}`,
+      week: currentWeek,
+      category: 'Rival',
+      importance: 'Low',
+      headline: story.headline,
+      details: story.details
+    });
+  }
+
+  // 5. Financial Calculation
+  const currentBudget = (promotion && typeof promotion.budget === 'number' && !isNaN(promotion.budget)) ? promotion.budget : 2000000;
+  const prodCostWeekly = (promotion && typeof promotion.productionCostWeekly === 'number' && !isNaN(promotion.productionCostWeekly)) ? promotion.productionCostWeekly : 25000;
+  const safeAttendance = (showResult && typeof showResult.attendance === 'number' && !isNaN(showResult.attendance)) ? showResult.attendance : 2000;
+  const safeGateRevenue = (showResult && typeof showResult.gateRevenue === 'number' && !isNaN(showResult.gateRevenue)) ? showResult.gateRevenue : (safeAttendance * 42);
+  const safeTvRating = (showResult && typeof showResult.tvRating === 'number' && !isNaN(showResult.tvRating)) ? showResult.tvRating : 1.5;
+  const safeScore = (showResult && typeof showResult.overallScore === 'number' && !isNaN(showResult.overallScore)) ? showResult.overallScore : 65;
+
+  const totalPayroll = updatedRoster.reduce((sum, w) => sum + (typeof w.salary === 'number' && !isNaN(w.salary) ? w.salary : 5000), 0);
+  const tvRevenue = Math.round(currentBudget * 0.02 * (safeTvRating / 2.5));
+  const ticketSales = safeGateRevenue;
+  const merchSales = Math.round(safeAttendance * (safeScore / 10));
+  const ppvSales = showResult.ppvRevenue || 0;
+  const productionCost = prodCostWeekly;
+  const arenaCost = Math.round(safeAttendance * 6);
+  const medicalCost = updatedRoster.filter(w => w.injury?.injured).length * 4500;
+
+  const totalRevenue = tvRevenue + ticketSales + merchSales + ppvSales;
+  const totalExpenses = totalPayroll + productionCost + arenaCost + medicalCost;
+  const netProfit = totalRevenue - totalExpenses;
+  const endingBalance = currentBudget + netProfit;
+
+  const financialReport: FinancialReport = {
+    week: currentWeek,
+    tvRevenue,
+    ticketSales,
+    merchSales,
+    ppvSales,
+    wrestlerPayroll: totalPayroll,
+    productionCost,
+    arenaCost,
+    medicalCost,
+    netProfit,
+    endingBalance
+  };
+
+  // 6. Network Satisfaction update
+  let satisfactionDelta = 0;
+  if (showResult.overallScore >= promotion.minNetworkRating + 8) {
+    satisfactionDelta = +3;
+  } else if (showResult.overallScore >= promotion.minNetworkRating) {
+    satisfactionDelta = +1;
+  } else if (showResult.overallScore < promotion.minNetworkRating - 10) {
+    satisfactionDelta = -5;
+  } else {
+    satisfactionDelta = -2;
+  }
+
+  const newNetworkSatisfaction = Math.min(100, Math.max(10, promotion.networkSatisfaction + satisfactionDelta));
+
+  // 7. Update Tag Team Records
+  const updatedTagTeams = (promotion.tagTeams || []).map(team => {
+    let tWins = team.wins;
+    let tLosses = team.losses;
+    currentShowCard.forEach(seg => {
+      if (seg.category === 'Match' && (seg.matchType === 'Tag Team' || seg.matchType === '6-Man Tag')) {
+        const teamInMatch = team.memberIds.filter(id => seg.participantIds.includes(id)).length >= 2;
+        if (teamInMatch && seg.winnerId) {
+          if (team.memberIds.includes(seg.winnerId)) {
+            tWins += 1;
+          } else {
+            tLosses += 1;
+          }
+        }
+      }
+    });
+    return { ...team, wins: tWins, losses: tLosses };
+  });
+
+  // 8. Roll Random Locker Room Incident
+  let activeIncidents = [...(promotion.activeIncidents || [])];
+  const unresolvedCount = activeIncidents.filter(i => !i.resolved).length;
+  if (unresolvedCount < 2 && Math.random() < 0.5 && updatedRoster.length >= 2) {
+    const randomIncident = SAMPLE_INCIDENTS_POOL[Math.floor(Math.random() * SAMPLE_INCIDENTS_POOL.length)];
+    const shuffled = [...updatedRoster].sort(() => 0.5 - Math.random());
+    const involvedIds = [shuffled[0].id, shuffled[1].id];
+    const newInc: LockerRoomIncident = {
+      id: `incident-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      week: currentWeek,
+      title: randomIncident.title,
+      description: randomIncident.description.replace('Two top stars', `${shuffled[0].name} and ${shuffled[1].name}`).replace('A key midcarder', shuffled[0].name).replace('A respected veteran', shuffled[0].name),
+      involvedWrestlerIds: involvedIds,
+      severity: randomIncident.severity,
+      resolved: false,
+      options: randomIncident.options
+    };
+    activeIncidents.unshift(newInc);
+    newNews.push({
+      id: `news-incident-${Date.now()}`,
+      week: currentWeek,
+      category: 'Wrestler',
+      importance: 'Medium',
+      headline: `Locker Room Whisper: ${newInc.title}`,
+      details: newInc.description
+    });
+  }
+
+  // 9. Process Active Storyline Arcs Progression
+  const updatedStorylineArcs = (promotion.storylineArcs || []).map(arc => {
+    if (arc.status === 'Concluded') return arc;
+
+    // Check if any booked segment featured this arc's participants
+    const arcFeatured = currentShowCard.some(seg => {
+      const hasProtagonist = arc.protagonistIds.some(id => seg.participantIds.includes(id));
+      const hasAntagonist = arc.antagonistIds.some(id => seg.participantIds.includes(id));
+      return hasProtagonist || hasAntagonist;
+    });
+
+    if (arcFeatured) {
+      const newIndex = arc.currentMilestoneIndex + 1;
+      const isClimaxReached = newIndex >= arc.milestones.length;
+
+      const updatedMilestones = arc.milestones.map((ms, idx) => {
+        if (idx === arc.currentMilestoneIndex) {
+          return { ...ms, isCompleted: true, completedWeek: currentWeek };
+        }
+        return ms;
+      });
+
+      const newHeat = Math.min(100, arc.heat + Math.floor(Math.random() * 4 + 3));
+
+      return {
+        ...arc,
+        heat: newHeat,
+        momentum: (newHeat >= 85 ? 'White Hot' : newHeat >= 70 ? 'Boiling Hot' : 'Simmering') as StorylineArc['momentum'],
+        currentMilestoneIndex: Math.min(newIndex, arc.milestones.length - 1),
+        status: isClimaxReached ? ('Climax Ready' as const) : arc.status,
+        milestones: updatedMilestones
+      };
+    } else {
+      // If arc had no presence on TV this week, slight heat decay
+      const decayedHeat = Math.max(15, arc.heat - 2);
+      return {
+        ...arc,
+        heat: decayedHeat,
+        momentum: (decayedHeat <= 40 ? 'Cooling Down' : decayedHeat <= 65 ? 'Simmering' : arc.momentum) as StorylineArc['momentum']
+      };
+    }
+  });
+
+  // Advance week & year
+  let nextWeek = currentWeek + 1;
+  let nextYear = currentYear;
+  if (nextWeek > 52) {
+    nextWeek = 1;
+    nextYear += 1;
+    // Roster members age 1 year on calendar rollover
+    updatedRoster.forEach(w => {
+      w.age += 1;
+    });
+  }
+
+  // Preserve and track retired roster
+  const updatedRetiredRoster = [...(promotion.retiredRoster || [])];
+
+  // Natural Retirement Evaluation based on retirementAge, age curves, and injury history
+  const remainingActiveRoster: Wrestler[] = [];
+  updatedRoster.forEach(w => {
+    const isChampion = updatedTitles.some(t => t.currentHolderIds.includes(w.id));
+    const targetRetireAge = w.retirementAge || (w.style === 'High Flyer' ? 40 : w.style === 'Hardcore' ? 41 : w.style === 'Powerhouse' ? 45 : 44);
+    const injuries = w.careerInjuriesCount || 0;
+
+    // Probability curve based on age vs planned retirement age + injury toll
+    let retireChance = 0;
+    if (w.age >= targetRetireAge + 2) {
+      retireChance = 0.30; // 2+ years past planned retirement
+    } else if (w.age >= targetRetireAge) {
+      retireChance = 0.15 + (injuries >= 3 ? 0.10 : 0); // At or past planned retirement
+    } else if (w.age >= targetRetireAge - 1 && injuries >= 3) {
+      retireChance = 0.08; // 1 year away with 3+ major career injuries
+    } else if (injuries >= 5 && w.age >= 36) {
+      retireChance = 0.06; // Significant wear-and-tear
+    }
+
+    // Champions usually hold out to drop the gold, unless far past retirement age
+    if (isChampion && w.age < targetRetireAge + 1) {
+      retireChance = 0;
+    }
+
+    const wantsToRetire = Math.random() < retireChance;
+
+    if (wantsToRetire) {
+      // Craft retirement reason reflecting age and injury toll
+      let retirementReason = `Reached planned retirement age of ${w.age} after a decorated career.`;
+      if (injuries >= 3) {
+        retirementReason = `Physical wear-and-tear after ${injuries} major career injuries, stepping away at age ${w.age}.`;
+      } else if (w.age >= targetRetireAge) {
+        retirementReason = `Fulfilled planned retirement milestone (age ${w.age}) to pass the torch to future stars.`;
+      }
+
+      // If active champion, vacate the title cleanly
+      if (isChampion) {
+        updatedTitles.forEach(t => {
+          if (t.currentHolderIds.includes(w.id)) {
+            t.currentHolderIds = t.currentHolderIds.filter(id => id !== w.id);
+            if (t.history && t.history.length > 0 && !t.history[0].lostWeek) {
+              t.history[0].lostWeek = currentWeek;
+              t.history[0].lostYear = currentYear;
+              t.history[0].isCurrent = false;
+              t.history[0].notes = `${t.history[0].notes || ''} (Vacated upon superstar retirement)`;
+            }
+            newNews.push({
+              id: `news-vacate-${Date.now()}-${t.id}`,
+              week: currentWeek,
+              category: 'Promotion',
+              importance: 'High',
+              headline: `CHAMPIONSHIP VACATED: ${t.name} Vacated as ${w.name} Retires!`,
+              details: `With ${w.name} formally announcing their retirement at age ${w.age}, the prestigious ${t.name} has been declared vacant.`
+            });
+          }
+        });
+      }
+
+      // Evaluate Hall of Fame Scorecard and Induction Opportunity
+      const scorecard = calculateHallOfFameScorecard(w, updatedTitles);
+      const isHofEligible = scorecard.overallScore >= 45 || scorecard.eligibilityTier !== 'Not Yet Eligible';
+
+      const retiredWrestler: Wrestler = {
+        ...w,
+        isRetired: true,
+        retiredWeek: currentWeek,
+        retiredYear: currentYear,
+        retirementReason,
+        salary: 0,
+        contractWeeks: 0,
+        careerWeeksInSimulator: w.careerWeeksInSimulator || Math.max(30, (w.age - 20) * 12),
+        peakOverness: Math.max(w.overness, w.peakOverness || w.overness),
+        hofNominationPending: isHofEligible
+      };
+
+      updatedRetiredRoster.unshift(retiredWrestler);
+
+      if (isHofEligible) {
+        newNews.push({
+          id: `news-hof-opportunity-${Date.now()}-${w.id}`,
+          week: currentWeek,
+          category: 'Promotion',
+          importance: 'High',
+          headline: `HALL OF FAME INDUCTION OPPORTUNITY: ${w.name} Retires with Hall of Fame Pedigree!`,
+          details: `After an iconic career of ${w.wins} wins, ${injuries} injuries, and ${retiredWrestler.careerWeeksInSimulator} weeks in the simulator, ${w.name} (age ${w.age}) has retired (${retirementReason}). Boasting an overall HOF rating of ${scorecard.overallScore}/100 (${scorecard.eligibilityTier}), a nomination opportunity is now active in the Hall of Fame!`
+        });
+      } else {
+        newNews.push({
+          id: `news-natural-retire-${Date.now()}-${w.id}`,
+          week: currentWeek,
+          category: 'Wrestler',
+          importance: 'Medium',
+          headline: `RETIREMENT: Veteran ${w.name} Officially Hangs Up the Boots!`,
+          details: `After logging ${w.wins} career victories, ${w.name} (age ${w.age}, ${injuries} career injuries) announced their retirement (${retirementReason}) and has moved to the Retired Legends Wing.`
+        });
+      }
+    } else {
+      remainingActiveRoster.push(w);
+    }
+  });
+
+  const updatedPromotion: Promotion = {
+    ...promotion,
+    budget: endingBalance,
+    networkSatisfaction: newNetworkSatisfaction,
+    roster: remainingActiveRoster,
+    titles: updatedTitles,
+    feuds: updatedFeuds,
+    tagTeams: updatedTagTeams,
+    factions: promotion.factions || [],
+    ppvSchedule: promotion.ppvSchedule || DEFAULT_PPV_CALENDAR,
+    customMatchRules: promotion.customMatchRules || DEFAULT_CUSTOM_MATCH_RULES,
+    activeIncidents,
+    resolvedIncidents: promotion.resolvedIncidents || [],
+    lockerRoomRule: promotion.lockerRoomRule || 'Balanced Professionalism',
+    storylineArcs: updatedStorylineArcs,
+    creativeNotes: promotion.creativeNotes || [],
+    creativePhilosophy: promotion.creativePhilosophy || 'Sports Entertainment Spectacle',
+    hallOfFame: promotion.hallOfFame || [],
+    retiredRoster: updatedRetiredRoster
+  };
+
+  return {
+    updatedPromotion,
+    updatedFreeAgents: freeAgents,
+    financialReport,
+    newNews,
+    nextWeek,
+    nextYear
+  };
+}
+
+/**
+ * Automatically creates a balanced 5-segment television card
+ * featuring top stars, active feuds, and championship matches.
+ */
+export function autoGenerateShowCard(promotion: Promotion): Segment[] {
+  const activeRoster = promotion.roster.filter(w => !w.injury.injured);
+  const sorted = [...activeRoster].sort((a, b) => b.overness - a.overness);
+  if (sorted.length < 4) return [];
+
+  const autoSegments: Segment[] = [];
+  const topFeud = promotion.feuds[0];
+  const worldTitle = promotion.titles[0];
+
+  // Segment 1: High-energy Opener Match
+  const w1 = sorted[4] || sorted[0];
+  const w2 = sorted[5] || sorted[1];
+  autoSegments.push({
+    id: `auto-seg-1-${Date.now()}`,
+    segmentNumber: 1,
+    category: 'Match',
+    matchType: 'Singles',
+    participantIds: [w1.id, w2.id],
+    winnerId: w1.id,
+    finishType: 'Clean Pinfall',
+    durationMinutes: 10
+  });
+
+  // Segment 2: Heated Promo / Angle (top feud or top star)
+  if (topFeud && topFeud.wrestlerAIds[0] && topFeud.wrestlerBIds[0]) {
+    autoSegments.push({
+      id: `auto-seg-2-${Date.now()}`,
+      segmentNumber: 2,
+      category: 'Angle',
+      angleType: 'In-Ring Promo',
+      participantIds: [topFeud.wrestlerAIds[0], topFeud.wrestlerBIds[0]],
+      durationMinutes: 8,
+      feudId: topFeud.id
+    });
+  } else {
+    autoSegments.push({
+      id: `auto-seg-2-${Date.now()}`,
+      segmentNumber: 2,
+      category: 'Angle',
+      angleType: 'In-Ring Promo',
+      participantIds: [sorted[0].id, sorted[1].id],
+      durationMinutes: 8
+    });
+  }
+
+  // Segment 3: Upper Midcard Match
+  const w3 = sorted[2] || sorted[0];
+  const w4 = sorted[3] || sorted[1];
+  autoSegments.push({
+    id: `auto-seg-3-${Date.now()}`,
+    segmentNumber: 3,
+    category: 'Match',
+    matchType: 'Hardcore / No DQ',
+    participantIds: [w3.id, w4.id],
+    winnerId: w3.id,
+    finishType: 'Weapon / Foreign Object',
+    durationMinutes: 14
+  });
+
+  // Segment 4: Dramatic Backstage Ambush
+  autoSegments.push({
+    id: `auto-seg-4-${Date.now()}`,
+    segmentNumber: 4,
+    category: 'Angle',
+    angleType: 'Backstage Ambush',
+    participantIds: [sorted[1].id, sorted[0].id],
+    durationMinutes: 5,
+    feudId: topFeud?.id
+  });
+
+  // Segment 5: Main Event (35% Show Weight)
+  autoSegments.push({
+    id: `auto-seg-5-${Date.now()}`,
+    segmentNumber: 5,
+    category: 'Match',
+    matchType: 'Singles',
+    participantIds: [sorted[0].id, sorted[1].id],
+    winnerId: sorted[0].id,
+    finishType: 'Clean Pinfall',
+    durationMinutes: 20,
+    titleId: worldTitle?.id,
+    feudId: topFeud?.id
+  });
+
+  return autoSegments;
+}
+
