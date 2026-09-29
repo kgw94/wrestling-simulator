@@ -40,8 +40,16 @@ import {
   Check,
   RotateCcw,
   AlertTriangle,
-  UserCheck
+  UserCheck,
+  Lightbulb,
+  Zap,
+  X
 } from 'lucide-react';
+import { 
+  suggestMatches, 
+  MatchSuggestion, 
+  MatchSuggestionCategory 
+} from '../engine/autoSuggestEngine';
 
 interface BookShowViewProps {
   promotion: Promotion;
@@ -301,6 +309,46 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
 
   const currentGM = promotion.currentGM || getDefaultGMForPromotion(promotion.style);
 
+  // Auto-Suggest Matches Modal State
+  const [isSuggestingMatches, setIsSuggestingMatches] = useState(false);
+  const [matchCategoryFilter, setMatchCategoryFilter] = useState<'all' | MatchSuggestionCategory>('all');
+  const [matchToast, setMatchToast] = useState<string | null>(null);
+
+  // Auto-Suggest match list
+  const activeMatchSuggestions = suggestMatches(promotion, currentCard, {
+    ppvMode: Boolean(currentPPV),
+    maxSuggestions: 12
+  });
+
+  const filteredMatchSuggestions = matchCategoryFilter === 'all'
+    ? activeMatchSuggestions
+    : activeMatchSuggestions.filter(s => s.category === matchCategoryFilter);
+
+  const handleAddSuggestedMatch = (sug: MatchSuggestion) => {
+    const newSegment: Segment = {
+      ...sug.segment,
+      id: `seg-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      segmentNumber: currentCard.length + 1
+    };
+    onUpdateCard([...currentCard, newSegment]);
+    setMatchToast(`Added "${sug.title}" to card!`);
+    setTimeout(() => setMatchToast(null), 3000);
+  };
+
+  const handleQuickAutoFillMatch = () => {
+    if (activeMatchSuggestions.length === 0) return;
+    const best = activeMatchSuggestions[0];
+    setCategory('Match');
+    setMatchType(best.matchType);
+    setSelectedParticipants([...best.participantIds]);
+    setWinnerId(best.winnerId);
+    setFinishType(best.finishType);
+    setDurationMinutes(best.durationMinutes);
+    setTitleId(best.titleId || '');
+    setFeudId(best.feudId || '');
+    setSegmentNotes(best.rationale);
+  };
+
   // Auto-Book Smart Card via General Manager
   const handleAutoBookCard = () => {
     const proposal = generateGMProposal(promotion, currentGM.activeDirective, currentWeek, currentYear);
@@ -434,7 +482,16 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsSuggestingMatches(true)}
+            className="px-3.5 py-2 rounded bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-mono font-bold text-xs flex items-center gap-1.5 shadow transition"
+            title="Browse tailored match recommendations (grudge rivalries, title bouts, workrate clinics)"
+          >
+            <Lightbulb className="w-3.5 h-3.5 fill-black" />
+            <span>Auto-Suggest Matches ({activeMatchSuggestions.length})</span>
+          </button>
           <button
             type="button"
             onClick={handleAutoBookCard}
@@ -454,6 +511,14 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Toast Alert */}
+      {matchToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-amber-500 text-black px-4 py-3 rounded-xl font-mono text-xs font-bold shadow-2xl flex items-center gap-2 border border-amber-400 animate-bounce">
+          <Check className="w-4 h-4" />
+          <span>{matchToast}</span>
+        </div>
+      )}
 
       {/* GM Front Office & Auto-Book Desk */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
@@ -774,13 +839,26 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                   </>
                 )}
               </h3>
-              <button
-                type="button"
-                onClick={handleCancelModal}
-                className="text-zinc-400 hover:text-white font-mono text-sm"
-              >
-                ✕ Cancel
-              </button>
+              <div className="flex items-center gap-2">
+                {!editingSegmentId && activeMatchSuggestions.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleQuickAutoFillMatch}
+                    className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black font-mono text-xs font-bold border border-amber-500/40 flex items-center gap-1.5 transition"
+                    title="Auto-fill this segment with top suggested match"
+                  >
+                    <Lightbulb className="w-3.5 h-3.5" />
+                    <span>Auto-Fill Best Match</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleCancelModal}
+                  className="text-zinc-400 hover:text-white font-mono text-sm px-2 py-1 rounded hover:bg-zinc-800 transition"
+                >
+                  ✕ Cancel
+                </button>
+              </div>
             </div>
 
             {/* Category Toggle: Match vs Angle */}
@@ -1226,6 +1304,183 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                   ? 'Save Segment Changes' 
                   : 'Save Segment to Card'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* MODAL: AUTO-SUGGEST MATCHES                                  */}
+      {/* ============================================================ */}
+      {isSuggestingMatches && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-zinc-900 border-2 border-amber-500/60 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-zinc-800 bg-zinc-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-mono text-amber-400 font-bold uppercase tracking-wider mb-1">
+                  <Lightbulb className="w-4 h-4 text-amber-400" />
+                  <span>Head Matchmaker Intelligence Desk</span>
+                </div>
+                <h3 className="text-xl font-black text-white font-mono flex items-center gap-2">
+                  <span>Auto-Suggested Matches for Tonight</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    {filteredMatchSuggestions.length} Match Proposals
+                  </span>
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1 max-w-xl">
+                  Deeply analyzes active feud heat, title divisions, tag team synergies, and workrates to suggest optimal match cards that generate maximum television ratings and star scores.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSuggestingMatches(false)}
+                className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Category Filter Bar */}
+            <div className="px-5 py-3 bg-zinc-900 border-b border-zinc-800 flex items-center gap-2 overflow-x-auto text-xs font-mono">
+              <span className="text-zinc-500 uppercase text-[10px] mr-1">Category:</span>
+              {(
+                [
+                  { id: 'all', label: 'All Match Ideas' },
+                  { id: 'Feud Climax', label: '🔥 Grudge Rivalries' },
+                  { id: 'Championship', label: '🏆 Title Bouts' },
+                  { id: 'Tag Team War', label: '🤝 Tag Divisions' },
+                  { id: 'Faction Battle', label: '🛡️ Faction Battles' },
+                  { id: 'Workrate Clinic', label: '⭐ Workrate Clinics' },
+                  { id: 'David vs Goliath', label: '⚡ Clash of Styles' },
+                  { id: 'Cruiser Sprint', label: '🚀 Hot Openers' }
+                ] as const
+              ).map(tab => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setMatchCategoryFilter(tab.id as any)}
+                  className={`px-3 py-1 rounded-md transition font-mono whitespace-nowrap ${
+                    matchCategoryFilter === tab.id
+                      ? 'bg-amber-500 text-black font-bold'
+                      : 'bg-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Suggestions Grid */}
+            <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredMatchSuggestions.length === 0 ? (
+                <div className="col-span-2 text-center py-12 text-zinc-500 font-mono text-sm">
+                  No match suggestions currently available for this category. Try selecting "All Match Ideas".
+                </div>
+              ) : (
+                filteredMatchSuggestions.map(sug => {
+                  const isAlreadyBooked = currentCard.some(s => 
+                    s.category === 'Match' &&
+                    s.participantIds.length === sug.participantIds.length &&
+                    sug.participantIds.every(id => s.participantIds.includes(id))
+                  );
+
+                  return (
+                    <div
+                      key={sug.id}
+                      className={`bg-zinc-950 border rounded-xl p-5 flex flex-col justify-between transition shadow-md group relative overflow-hidden ${
+                        isAlreadyBooked ? 'border-zinc-800 opacity-60' : 'border-zinc-800 hover:border-amber-500/70'
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        {/* Top Badges */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 uppercase">
+                              {sug.categoryBadge}
+                            </span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300">
+                              {sug.matchType} • {sug.durationMinutes}m
+                            </span>
+                          </div>
+                          <span className="text-xs font-mono font-black text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
+                            ★ ~{sug.projectedScore}/100
+                          </span>
+                        </div>
+
+                        {/* Match Title */}
+                        <div>
+                          <h4 className="text-base font-bold text-white font-mono group-hover:text-amber-300 transition">
+                            {sug.title}
+                          </h4>
+                          <span className="text-[11px] font-mono text-zinc-400 block mt-0.5">
+                            {sug.projectedStars}
+                          </span>
+                        </div>
+
+                        {/* Participants Preview */}
+                        <div className="space-y-1.5 pt-1">
+                          <span className="text-[10px] font-mono text-zinc-500 uppercase block">Competitors:</span>
+                          <div className="flex flex-wrap gap-2 text-xs font-mono">
+                            {sug.participants.map(p => (
+                              <div
+                                key={p.id}
+                                className={`px-2.5 py-1.5 rounded bg-zinc-900 border flex items-center gap-2 ${
+                                  p.id === sug.winnerId
+                                    ? 'border-amber-500/40 text-amber-300 font-bold'
+                                    : 'border-zinc-800 text-zinc-300'
+                                }`}
+                              >
+                                <span>{p.name}</span>
+                                <span className={`text-[9px] px-1 rounded ${
+                                  p.alignment === 'Face' ? 'bg-sky-500/20 text-sky-400' : 'bg-rose-500/20 text-rose-400'
+                                }`}>
+                                  {p.style}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Projected Finish & Rationale */}
+                        <div className="space-y-1 text-xs">
+                          <div className="font-mono text-[11px] text-zinc-300 flex items-center justify-between">
+                            <span className="text-zinc-500 uppercase text-[10px]">Projected Outcome:</span>
+                            <span className="text-amber-300 font-semibold">{sug.winnerName} ({sug.finishType})</span>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 font-sans italic bg-zinc-900/60 p-2.5 rounded border border-zinc-800/60 mt-1">
+                            "{sug.rationale}"
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Action Button */}
+                      <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-2">
+                        {isAlreadyBooked ? (
+                          <span className="text-xs font-mono text-zinc-500 flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5 text-emerald-400" /> Already on card
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-mono text-zinc-500">
+                            Slot #{currentCard.length + 1}
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleAddSuggestedMatch(sug)}
+                          disabled={isAlreadyBooked}
+                          className="px-4 py-1.5 rounded bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:hover:bg-amber-500 text-black text-xs font-mono font-bold transition flex items-center gap-1.5 shadow"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>{isAlreadyBooked ? 'Booked' : "Add to Tonight's Card"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

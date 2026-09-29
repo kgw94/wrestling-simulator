@@ -447,11 +447,11 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               Tag Teams & Factions
             </h3>
             <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
-              Form tag teams with tandem chemistry bonuses, track win-loss records, and build multi-man stables to dominate your television storylines.
+              Auto-suggest complementary tag teams with tandem chemistry bonuses, construct multi-man stables with appointed leaders and enforcers, and track division records.
             </p>
           </div>
           <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-sky-400">
-            <span>{promotion.tagTeams?.length || 0} Teams • {promotion.factions?.length || 0} Factions</span>
+            <span>Auto-Suggest AI • {promotion.tagTeams?.length || 0} Teams • {promotion.factions?.length || 0} Factions</span>
             <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
           </div>
         </button>
