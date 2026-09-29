@@ -15,7 +15,9 @@ import {
   Trophy,
   PenTool,
   Settings,
-  Palette
+  Palette,
+  Briefcase,
+  HardDrive
 } from 'lucide-react';
 import { formatNumber } from '../utils/format';
 import { getResolvedTheme } from '../data/themes';
@@ -24,12 +26,14 @@ interface MainMenuProps {
   gameState: GameState;
   onNavigate: (view: GameState['currentView']) => void;
   onAdvanceWeek: () => void;
+  onOpenSaveModal?: () => void;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = ({
   gameState,
   onNavigate,
-  onAdvanceWeek
+  onAdvanceWeek,
+  onOpenSaveModal
 }) => {
   const { promotion, currentWeek, currentYear, currentShowCard, averageShowRating, topFeudHeat, newsArchive } = gameState;
 
@@ -286,6 +290,67 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
           </div>
         </button>
+
+        {/* Feature: Front Office & GM Booking Desk */}
+        <button
+          type="button"
+          onClick={() => onNavigate('gm_office')}
+          className="group text-left p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/80 hover:bg-zinc-900/90 transition shadow-sm hover:shadow-md hover:shadow-amber-500/5 flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded bg-amber-500/20 text-amber-400 font-mono text-xs font-bold border border-amber-500/40 group-hover:bg-amber-500 group-hover:text-black transition">
+                  [ G ]
+                </span>
+                {promotion.currentGM && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-amber-300 border border-zinc-700">
+                    {promotion.currentGM.avatar} {promotion.currentGM.name}
+                  </span>
+                )}
+              </div>
+              <Briefcase className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 transition" />
+            </div>
+            <h3 className="font-bold text-white text-base font-mono group-hover:text-amber-300 transition">
+              Front Office & GM Booking Desk
+            </h3>
+            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
+              Delegate weekly matchmaking to your appointed General Manager. Review auto-scripted TV cards with one-click approval, set booking directives, or hire new matchmakers.
+            </p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-amber-400">
+            <span>{promotion.currentGM ? `${promotion.currentGM.trustScore}% Executive Trust • ${promotion.currentGM.showsRunCount} Shows Run` : 'Appoint GM'}</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+          </div>
+        </button>
+
+        {/* Feature: Import & Export Save File */}
+        {onOpenSaveModal && (
+          <button
+            type="button"
+            onClick={onOpenSaveModal}
+            className="group text-left p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-emerald-500/80 hover:bg-zinc-900/90 transition shadow-sm flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-400 font-mono text-xs font-bold border border-emerald-500/40 group-hover:bg-emerald-500 group-hover:text-black transition">
+                  [ JSON ]
+                </span>
+                <HardDrive className="w-5 h-5 text-zinc-500 group-hover:text-emerald-400 transition" />
+              </div>
+              <h3 className="font-bold text-white text-base font-mono group-hover:text-emerald-300 transition">
+                Save Game Import & Export
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
+                Backup your promotion, roster, GM progress, storylines, and history to a downloadable JSON file, or restore a previous career save.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-emerald-400">
+              <span>Export .JSON • QuickSave</span>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+            </div>
+          </button>
+        )}
 
         {/* Feature 1: PPV & Supercards Calendar */}
         <button

@@ -18,6 +18,8 @@ import {
   SAMPLE_INCIDENTS_POOL,
   calculateHallOfFameScorecard
 } from '../data/customDefaults';
+import { generateGMPostShowDebrief, generateGMProposal } from './gmEngine';
+import { validateMatchTitleGender, isWrestlerEligibleForTitle } from '../utils/titleUtils';
 
 export function calculateStarRating(score: number): { stars: number; starString: string } {
   if (score >= 95) return { stars: 5.0, starString: '5.00 Stars ★★★★★' };
@@ -255,13 +257,19 @@ export function evaluateSegment(
     }
   }
 
-  // Title on the line bonus
+  // Title on the line bonus with strict gender validation
   if (segment.titleId && promotion && promotion.titles) {
     const title = promotion.titles.find(t => t.id === segment.titleId);
     if (title) {
-      const titleBonus = Math.round((title.prestige / 100) * 5) + (title.minWorkrateBonus || 0);
-      score += titleBonus;
-      notes.push(`Championship Stakes (+${titleBonus} pts for ${title.name})`);
+      const genderValidation = validateMatchTitleGender(title, participants);
+      if (!genderValidation.isValid) {
+        score = Math.max(10, score - 15);
+        notes.push(`⚠️ Title Sanction Voided (-15 pts): ${genderValidation.errorReason}`);
+      } else {
+        const titleBonus = Math.round((title.prestige / 100) * 5) + (title.minWorkrateBonus || 0);
+        score += titleBonus;
+        notes.push(`Championship Stakes (+${titleBonus} pts for ${title.name})`);
+      }
     }
   }
 
@@ -464,7 +472,14 @@ export function calculateShowResult(
     segmentEvaluations: evaluations,
     topSegmentScore,
     mainEventScore,
-    networkFeedback
+    networkFeedback,
+    gmFeedback: promotion.currentGM ? {
+      gmName: promotion.currentGM.name,
+      gmAvatar: promotion.currentGM.avatar,
+      quote: generateGMPostShowDebrief({ overallScore } as ShowResult, promotion.currentGM, true).debriefQuote,
+      reaction: generateGMPostShowDebrief({ overallScore } as ShowResult, promotion.currentGM, true).reaction,
+      ratingScore: overallScore
+    } : undefined
   };
 }
 
@@ -559,10 +574,21 @@ export function advanceWeekEngine(
       }
     }
 
-    // Title changes
+    // Title changes & defenses with strict gender division check
     if (segment.titleId && segment.winnerId) {
       const title = updatedTitles.find(t => t.id === segment.titleId);
       if (title) {
+        const winner = updatedRoster.find(w => w.id === segment.winnerId);
+        const matchParticipants = segment.participantIds
+          .map(id => updatedRoster.find(w => w.id === id))
+          .filter((w): w is Wrestler => Boolean(w));
+
+        const genderCheck = validateMatchTitleGender(title, matchParticipants);
+        if (!genderCheck.isValid || (winner && !isWrestlerEligibleForTitle(title, winner))) {
+          // Reject title defense or championship transfer due to gender violation!
+          return;
+        }
+
         const isCurrentHolder = title.currentHolderIds.includes(segment.winnerId);
         const segEval = showResult.segmentEvaluations?.find(se => se.segment.id === segment.id);
         const eventName = showResult.isPPV && showResult.ppvEvent ? showResult.ppvEvent.name : promotion.weeklyTVShow;
@@ -1039,6 +1065,27 @@ export function advanceWeekEngine(
     }
   });
 
+  // Evaluate GM post-show progression
+  let updatedGM = promotion.currentGM;
+  if (promotion.currentGM) {
+    const debrief = generateGMPostShowDebrief(showResult, promotion.currentGM, true);
+    if (debrief.updatedGM) {
+      updatedGM = debrief.updatedGM;
+    }
+  }
+
+  const updatedGMHistory = promotion.currentGM ? [
+    {
+      week: currentWeek,
+      year: currentYear,
+      gmName: promotion.currentGM.name,
+      rating: showResult.overallScore,
+      wasApprovedAsIs: true,
+      headline: `${promotion.weeklyTVShow} scored ${showResult.overallScore}/100 under GM ${promotion.currentGM.name}`
+    },
+    ...(promotion.gmHistory || [])
+  ] : (promotion.gmHistory || []);
+
   const updatedPromotion: Promotion = {
     ...promotion,
     budget: endingBalance,
@@ -1057,7 +1104,11 @@ export function advanceWeekEngine(
     creativeNotes: promotion.creativeNotes || [],
     creativePhilosophy: promotion.creativePhilosophy || 'Sports Entertainment Spectacle',
     hallOfFame: promotion.hallOfFame || [],
-    retiredRoster: updatedRetiredRoster
+    retiredRoster: updatedRetiredRoster,
+    currentGM: updatedGM,
+    availableGMs: promotion.availableGMs,
+    pendingGMProposal: undefined,
+    gmHistory: updatedGMHistory
   };
 
   return {
@@ -1072,92 +1123,19 @@ export function advanceWeekEngine(
 
 /**
  * Automatically creates a balanced 5-segment television card
- * featuring top stars, active feuds, and championship matches.
+ * powered by the intelligent GM matchmaking engine.
+ * Guarantees:
+ * 1. Zero character reuse across segments.
+ * 2. High roster utilization across divisions.
+ * 3. Strict gender segregation for Men's and Women's championships.
  */
-export function autoGenerateShowCard(promotion: Promotion): Segment[] {
-  const activeRoster = promotion.roster.filter(w => !w.injury.injured);
-  const sorted = [...activeRoster].sort((a, b) => b.overness - a.overness);
-  if (sorted.length < 4) return [];
-
-  const autoSegments: Segment[] = [];
-  const topFeud = promotion.feuds[0];
-  const worldTitle = promotion.titles[0];
-
-  // Segment 1: High-energy Opener Match
-  const w1 = sorted[4] || sorted[0];
-  const w2 = sorted[5] || sorted[1];
-  autoSegments.push({
-    id: `auto-seg-1-${Date.now()}`,
-    segmentNumber: 1,
-    category: 'Match',
-    matchType: 'Singles',
-    participantIds: [w1.id, w2.id],
-    winnerId: w1.id,
-    finishType: 'Clean Pinfall',
-    durationMinutes: 10
-  });
-
-  // Segment 2: Heated Promo / Angle (top feud or top star)
-  if (topFeud && topFeud.wrestlerAIds[0] && topFeud.wrestlerBIds[0]) {
-    autoSegments.push({
-      id: `auto-seg-2-${Date.now()}`,
-      segmentNumber: 2,
-      category: 'Angle',
-      angleType: 'In-Ring Promo',
-      participantIds: [topFeud.wrestlerAIds[0], topFeud.wrestlerBIds[0]],
-      durationMinutes: 8,
-      feudId: topFeud.id
-    });
-  } else {
-    autoSegments.push({
-      id: `auto-seg-2-${Date.now()}`,
-      segmentNumber: 2,
-      category: 'Angle',
-      angleType: 'In-Ring Promo',
-      participantIds: [sorted[0].id, sorted[1].id],
-      durationMinutes: 8
-    });
-  }
-
-  // Segment 3: Upper Midcard Match
-  const w3 = sorted[2] || sorted[0];
-  const w4 = sorted[3] || sorted[1];
-  autoSegments.push({
-    id: `auto-seg-3-${Date.now()}`,
-    segmentNumber: 3,
-    category: 'Match',
-    matchType: 'Hardcore / No DQ',
-    participantIds: [w3.id, w4.id],
-    winnerId: w3.id,
-    finishType: 'Weapon / Foreign Object',
-    durationMinutes: 14
-  });
-
-  // Segment 4: Dramatic Backstage Ambush
-  autoSegments.push({
-    id: `auto-seg-4-${Date.now()}`,
-    segmentNumber: 4,
-    category: 'Angle',
-    angleType: 'Backstage Ambush',
-    participantIds: [sorted[1].id, sorted[0].id],
-    durationMinutes: 5,
-    feudId: topFeud?.id
-  });
-
-  // Segment 5: Main Event (35% Show Weight)
-  autoSegments.push({
-    id: `auto-seg-5-${Date.now()}`,
-    segmentNumber: 5,
-    category: 'Match',
-    matchType: 'Singles',
-    participantIds: [sorted[0].id, sorted[1].id],
-    winnerId: sorted[0].id,
-    finishType: 'Clean Pinfall',
-    durationMinutes: 20,
-    titleId: worldTitle?.id,
-    feudId: topFeud?.id
-  });
-
-  return autoSegments;
+export function autoGenerateShowCard(promotion: Promotion, currentWeek: number = 1, currentYear: number = 2026): Segment[] {
+  const proposal = generateGMProposal(
+    promotion, 
+    promotion.currentGM?.activeDirective || 'balanced', 
+    currentWeek, 
+    currentYear
+  );
+  return proposal.segments;
 }
 

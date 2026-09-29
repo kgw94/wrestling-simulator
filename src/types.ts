@@ -191,6 +191,10 @@ export interface Segment {
   titleId?: string; // if title is on the line
   feudId?: string; // associated feud
   notes?: string;
+  gmRationale?: string;
+  gmRecommendedWinner?: string;
+  gmTag?: string;
+  genderWarning?: string;
 }
 
 export interface SegmentEvaluation {
@@ -230,6 +234,13 @@ export interface ShowResult {
   topSegmentScore: number;
   mainEventScore: number;
   networkFeedback: string;
+  gmFeedback?: {
+    gmName: string;
+    gmAvatar: string;
+    quote: string;
+    reaction: 'ecstatic' | 'pleased' | 'neutral' | 'concerned' | 'critical';
+    ratingScore: number;
+  };
 }
 
 export type ChampionshipType = 
@@ -284,6 +295,7 @@ export interface Championship {
   shortName?: string;
   type?: ChampionshipType;
   division?: TitleDivision;
+  gender?: 'Male' | 'Female' | 'Open';
   prestige: number; // 0-100
   currentHolderIds: string[]; // 1 wrestler for singles, 2 for tag
   defenses: number;
@@ -406,6 +418,84 @@ export interface Promotion {
   hallOfFame?: HallOfFameInductee[];
   retiredRoster?: Wrestler[];
   themeSettings?: ThemeSettings;
+  currentGM?: GeneralManager;
+  availableGMs?: GeneralManager[];
+  pendingGMProposal?: GMProposal;
+  gmHistory?: {
+    week: number;
+    year: number;
+    gmName: string;
+    rating: number;
+    wasApprovedAsIs: boolean;
+    headline: string;
+  }[];
+}
+
+export type GMArchetype = 
+  | 'traditionalist' 
+  | 'showman' 
+  | 'hardcore_outlaw' 
+  | 'executive' 
+  | 'tyrant';
+
+export type GMBookingDirective = 
+  | 'balanced' 
+  | 'world_title_focus' 
+  | 'rest_and_protect' 
+  | 'youth_movement' 
+  | 'high_drama_angles' 
+  | 'workrate_clinic';
+
+export interface GMPerk {
+  name: string;
+  description: string;
+  effectBadge: string;
+}
+
+export interface GeneralManager {
+  id: string;
+  name: string;
+  nickname: string;
+  avatar: string;
+  archetype: GMArchetype;
+  title: string;
+  bio: string;
+  perk: GMPerk;
+  trustScore: number; // 0-100
+  showsRunCount: number;
+  approvalRate: number; // 0-100%
+  bookingStyleNotes: string[];
+  preferredDirective: GMBookingDirective;
+  activeDirective?: GMBookingDirective;
+  salaryWeekly: number;
+  isHired: boolean;
+}
+
+export interface GMProposalSegment extends Segment {
+  gmRationale?: string;
+  gmRecommendedWinner?: string;
+  gmTag?: string;
+  projectedScore?: number;
+}
+
+export interface GMProposal {
+  id: string;
+  showName: string;
+  week: number;
+  year: number;
+  gmId: string;
+  gmName: string;
+  gmAvatar: string;
+  archetype: GMArchetype;
+  activeDirective: GMBookingDirective;
+  executiveSummary: string;
+  projectedShowRating: number;
+  projectedStarRating: string;
+  restedStars: { id: string; name: string; reason: string; currentFatigue: number }[];
+  keyStorylinesAdvanced: string[];
+  segments: GMProposalSegment[];
+  status: 'pending_approval' | 'approved' | 'modified' | 'rejected';
+  createdAt: number;
 }
 
 export type ThemePresetId = 
@@ -529,6 +619,7 @@ export type GameView =
   | 'sandbox_customizer'
   | 'writers_hub'
   | 'hall_of_fame'
+  | 'gm_office'
   | 'settings';
 
 export interface GameState {

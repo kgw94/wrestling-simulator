@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { Promotion, Difficulty } from '../types';
 import { PRESET_PROMOTIONS } from '../data/promotions';
 import { MarkdownTableView } from './MarkdownTableView';
-import { Shield, Skull, Zap, Sparkles, Trophy, Tv, DollarSign, Users, Award, Play } from 'lucide-react';
+import { Shield, Skull, Zap, Sparkles, Trophy, Tv, DollarSign, Users, Award, Play, HardDrive } from 'lucide-react';
 
 interface SetupMenuProps {
   onStartGame: (selectedPromotion: Promotion, difficulty: Difficulty) => void;
+  onOpenSaveModal?: () => void;
 }
 
-export const SetupMenu: React.FC<SetupMenuProps> = ({ onStartGame }) => {
+export const SetupMenu: React.FC<SetupMenuProps> = ({ onStartGame, onOpenSaveModal }) => {
   const [selectedPresetId, setSelectedPresetId] = useState<string>('apw');
   const [difficulty, setDifficulty] = useState<Difficulty>('Medium');
   const [isCustom, setIsCustom] = useState(false);
@@ -110,6 +111,19 @@ Difficulty Setting: [ ${difficulty.toUpperCase()} ]
           <p className="text-zinc-400 text-sm md:text-base max-w-2xl mx-auto leading-relaxed">
             Take the book. Manage locker room egos, craft rivalries, book match cards, and produce five-star wrestling television.
           </p>
+
+          {onOpenSaveModal && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onOpenSaveModal}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700 hover:border-emerald-500/80 text-xs font-mono font-bold transition shadow-sm"
+              >
+                <HardDrive className="w-4 h-4 text-emerald-400" />
+                <span>Import Saved Game File (.JSON)</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Markdown Specification View */}

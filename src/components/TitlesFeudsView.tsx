@@ -13,6 +13,12 @@ import {
 import { CHAMPIONSHIP_TEMPLATES } from '../data/customDefaults';
 import { MarkdownTableView } from './MarkdownTableView';
 import { 
+  getChampionshipGender, 
+  isWrestlerEligibleForTitle, 
+  getChampionshipGenderBadge, 
+  filterEligibleWrestlersForTitle 
+} from '../utils/titleUtils';
+import { 
   Trophy, 
   Flame, 
   Plus, 
@@ -84,6 +90,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
     shortName: string;
     type: ChampionshipType;
     division: TitleDivision;
+    gender: 'Male' | 'Female' | 'Open';
     prestige: number;
     isTagTeam: boolean;
     strapColor: BeltStrapColor;
@@ -98,6 +105,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
     shortName: '',
     type: 'World / Primary',
     division: 'Openweight',
+    gender: 'Male',
     prestige: 85,
     isTagTeam: false,
     strapColor: 'Classic Black',
@@ -448,6 +456,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       shortName: '',
       type: 'World / Primary',
       division: 'Openweight',
+      gender: 'Male',
       prestige: 80,
       isTagTeam: false,
       strapColor: 'Classic Black',
@@ -462,12 +471,14 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
   };
 
   const handleApplyTemplate = (tpl: typeof CHAMPIONSHIP_TEMPLATES[0]) => {
+    const inferredGender = (tpl.division === 'Women' || tpl.type === "Women's") ? 'Female' : 'Male';
     setTitleForm(prev => ({
       ...prev,
       name: tpl.name,
       shortName: tpl.shortName,
       type: tpl.type,
       division: tpl.division,
+      gender: inferredGender,
       prestige: tpl.prestige,
       isTagTeam: tpl.isTagTeam,
       strapColor: tpl.strapColor,
@@ -514,6 +525,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       shortName: titleForm.shortName.trim() || titleForm.name.slice(0, 4).toUpperCase(),
       type: titleForm.type,
       division: titleForm.division,
+      gender: titleForm.gender,
       prestige: titleForm.prestige,
       isTagTeam: titleForm.isTagTeam,
       currentHolderIds: initialHolders,
@@ -554,6 +566,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       shortName: title.shortName || '',
       type: title.type || 'World / Primary',
       division: title.division || (title.isTagTeam ? 'Tag Team' : 'Openweight'),
+      gender: title.gender || getChampionshipGender(title),
       prestige: title.prestige,
       isTagTeam: !!title.isTagTeam,
       strapColor: title.strapColor || 'Classic Black',
@@ -629,6 +642,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
           shortName: titleForm.shortName.trim() || t.name.slice(0, 4).toUpperCase(),
           type: titleForm.type,
           division: titleForm.division,
+          gender: titleForm.gender,
           prestige: Math.max(1, Math.min(100, titleForm.prestige)),
           isTagTeam: titleForm.isTagTeam,
           currentHolderIds: newHolders,
@@ -1148,6 +1162,15 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
+                            {(() => {
+                              const gBadge = getChampionshipGenderBadge(title);
+                              return (
+                                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border font-bold flex items-center gap-1 ${gBadge.className}`}>
+                                  <span>{gBadge.icon}</span>
+                                  <span>{gBadge.label}</span>
+                                </span>
+                              );
+                            })()}
                             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
                               {title.type || 'Singles'}
                             </span>
@@ -1293,8 +1316,8 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                               className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-white text-[11px] focus:outline-none"
                             >
                               <option value="" disabled>Award to...</option>
-                              {promotion.roster.map(w => (
-                                <option key={w.id} value={w.id}>{w.name}</option>
+                              {filterEligibleWrestlersForTitle(title, promotion.roster).map(w => (
+                                <option key={w.id} value={w.id}>{w.name} ({w.gender})</option>
                               ))}
                             </select>
                           </div>
@@ -1789,13 +1812,23 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
               </div>
             </div>
 
-            {/* Type & Division & Prestige */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Type & Division & Gender & Prestige */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
               <div>
                 <label className="block text-zinc-400 mb-1">Championship Tier</label>
                 <select
                   value={titleForm.type}
-                  onChange={e => setTitleForm({ ...titleForm, type: e.target.value as ChampionshipType })}
+                  onChange={e => {
+                    const newType = e.target.value as ChampionshipType;
+                    const isWomen = newType === "Women's";
+                    setTitleForm(prev => ({
+                      ...prev,
+                      type: newType,
+                      gender: isWomen ? 'Female' : prev.gender,
+                      division: isWomen ? 'Women' : prev.division,
+                      initialHolderId: isWomen && promotion.roster.find(w => w.id === prev.initialHolderId)?.gender !== 'Female' ? '' : prev.initialHolderId
+                    }));
+                  }}
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500"
                 >
                   <option value="World / Primary">World / Primary</option>
@@ -1813,7 +1846,15 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                 <label className="block text-zinc-400 mb-1">Division</label>
                 <select
                   value={titleForm.division}
-                  onChange={e => setTitleForm({ ...titleForm, division: e.target.value as TitleDivision })}
+                  onChange={e => {
+                    const newDiv = e.target.value as TitleDivision;
+                    const isWomen = newDiv === 'Women';
+                    setTitleForm(prev => ({
+                      ...prev,
+                      division: newDiv,
+                      gender: isWomen ? 'Female' : prev.gender
+                    }));
+                  }}
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500"
                 >
                   <option value="Openweight">Openweight</option>
@@ -1821,6 +1862,28 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                   <option value="Cruiserweight">Cruiserweight</option>
                   <option value="Women">Women</option>
                   <option value="Tag Team">Tag Team</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 mb-1">Gender Restriction</label>
+                <select
+                  value={titleForm.gender}
+                  onChange={e => {
+                    const newGender = e.target.value as 'Male' | 'Female' | 'Open';
+                    const validHolders = filterEligibleWrestlersForTitle({ gender: newGender }, promotion.roster);
+                    setTitleForm(prev => ({
+                      ...prev,
+                      gender: newGender,
+                      initialHolderId: validHolders.some(w => w.id === prev.initialHolderId) ? prev.initialHolderId : '',
+                      initialHolder2Id: validHolders.some(w => w.id === prev.initialHolder2Id) ? prev.initialHolder2Id : ''
+                    }));
+                  }}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-white font-bold focus:outline-none focus:border-amber-500"
+                >
+                  <option value="Male">👨 Men's (Male Only)</option>
+                  <option value="Female">👩 Women's (Female Only)</option>
+                  <option value="Open">🌐 Open / Any Gender</option>
                 </select>
               </div>
 
@@ -1916,8 +1979,8 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                     className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
                   >
                     <option value="">-- Leave Vacant --</option>
-                    {promotion.roster.map(w => (
-                      <option key={w.id} value={w.id}>{w.name} ({w.alignment} • Overness: {w.overness})</option>
+                    {filterEligibleWrestlersForTitle({ gender: titleForm.gender }, promotion.roster).map(w => (
+                      <option key={w.id} value={w.id}>{w.name} ({w.gender} • {w.alignment} • Overness: {w.overness})</option>
                     ))}
                   </select>
                 </div>
@@ -1931,9 +1994,11 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                       className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
                     >
                       <option value="">-- Select Tag Partner --</option>
-                      {promotion.roster.filter(w => w.id !== titleForm.initialHolderId).map(w => (
-                        <option key={w.id} value={w.id}>{w.name} ({w.alignment})</option>
-                      ))}
+                      {filterEligibleWrestlersForTitle({ gender: titleForm.gender }, promotion.roster)
+                        .filter(w => w.id !== titleForm.initialHolderId)
+                        .map(w => (
+                          <option key={w.id} value={w.id}>{w.name} ({w.gender} • {w.alignment})</option>
+                        ))}
                     </select>
                   </div>
                 )}
@@ -2061,7 +2126,15 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                 <label className="block text-zinc-400 mb-1">Division</label>
                 <select
                   value={titleForm.division}
-                  onChange={e => setTitleForm({ ...titleForm, division: e.target.value as TitleDivision })}
+                  onChange={e => {
+                    const newDiv = e.target.value as TitleDivision;
+                    const isWomen = newDiv === 'Women';
+                    setTitleForm(prev => ({
+                      ...prev,
+                      division: newDiv,
+                      gender: isWomen ? 'Female' : prev.gender
+                    }));
+                  }}
                   className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500"
                 >
                   <option value="Openweight">Openweight</option>
@@ -2069,6 +2142,28 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                   <option value="Cruiserweight">Cruiserweight</option>
                   <option value="Women">Women</option>
                   <option value="Tag Team">Tag Team</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 mb-1">Gender Restriction</label>
+                <select
+                  value={titleForm.gender}
+                  onChange={e => {
+                    const newGender = e.target.value as 'Male' | 'Female' | 'Open';
+                    const validHolders = filterEligibleWrestlersForTitle({ gender: newGender }, promotion.roster);
+                    setTitleForm(prev => ({
+                      ...prev,
+                      gender: newGender,
+                      initialHolderId: validHolders.some(w => w.id === prev.initialHolderId) ? prev.initialHolderId : '',
+                      initialHolder2Id: validHolders.some(w => w.id === prev.initialHolder2Id) ? prev.initialHolder2Id : ''
+                    }));
+                  }}
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-white font-bold focus:outline-none focus:border-amber-500"
+                >
+                  <option value="Male">👨 Men's (Male Only)</option>
+                  <option value="Female">👩 Women's (Female Only)</option>
+                  <option value="Open">🌐 Open / Any Gender</option>
                 </select>
               </div>
 
@@ -2160,8 +2255,8 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                     className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
                   >
                     <option value="">-- VACANT --</option>
-                    {promotion.roster.map(w => (
-                      <option key={w.id} value={w.id}>{w.name} ({w.alignment})</option>
+                    {filterEligibleWrestlersForTitle({ gender: titleForm.gender }, promotion.roster).map(w => (
+                      <option key={w.id} value={w.id}>{w.name} ({w.alignment} - {w.gender})</option>
                     ))}
                   </select>
                 </div>
@@ -2175,9 +2270,11 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                       className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
                     >
                       <option value="">-- Select Partner --</option>
-                      {promotion.roster.filter(w => w.id !== titleForm.initialHolderId).map(w => (
-                        <option key={w.id} value={w.id}>{w.name} ({w.alignment})</option>
-                      ))}
+                      {filterEligibleWrestlersForTitle({ gender: titleForm.gender }, promotion.roster)
+                        .filter(w => w.id !== titleForm.initialHolderId)
+                        .map(w => (
+                          <option key={w.id} value={w.id}>{w.name} ({w.alignment} - {w.gender})</option>
+                        ))}
                     </select>
                   </div>
                 )}

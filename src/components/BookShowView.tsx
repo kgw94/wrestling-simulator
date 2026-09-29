@@ -14,6 +14,12 @@ import { evaluateSegment } from '../engine/simulation';
 import { DEFAULT_PPV_CALENDAR } from '../data/customDefaults';
 import { formatNumber } from '../utils/format';
 import { MarkdownTableView } from './MarkdownTableView';
+import { generateGMProposal, getDefaultGMForPromotion } from '../engine/gmEngine';
+import { 
+  getChampionshipGender, 
+  isWrestlerEligibleForTitle, 
+  getChampionshipGenderBadge 
+} from '../utils/titleUtils';
 import { 
   Plus, 
   Trash2, 
@@ -29,7 +35,12 @@ import {
   ChevronLeft,
   Users,
   Swords,
-  Pencil
+  Pencil,
+  Briefcase,
+  Check,
+  RotateCcw,
+  AlertTriangle,
+  UserCheck
 } from 'lucide-react';
 
 interface BookShowViewProps {
@@ -40,6 +51,7 @@ interface BookShowViewProps {
   onUpdateCard: (newCard: Segment[]) => void;
   onBackToMenu: () => void;
   onAdvanceWeek: () => void;
+  onOpenGMOffice?: () => void;
 }
 
 const MATCH_TYPES: MatchType[] = [
@@ -90,7 +102,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
   currentCard,
   onUpdateCard,
   onBackToMenu,
-  onAdvanceWeek
+  onAdvanceWeek,
+  onOpenGMOffice
 }) => {
   // PPV Check
   const ppvSchedule = (promotion.ppvSchedule && promotion.ppvSchedule.length > 0)
@@ -112,8 +125,39 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
   const [titleId, setTitleId] = useState<string>('');
   const [feudId, setFeudId] = useState<string>('');
   const [segmentNotes, setSegmentNotes] = useState<string>('');
+  const [rosterFilter, setRosterFilter] = useState<'all' | 'unbooked' | 'men' | 'women'>('all');
 
   const activeRoster = promotion.roster.filter(w => !w.injury.injured);
+
+  // Selected championship & gender rules
+  const selectedTitle = titleId ? promotion.titles.find(t => t.id === titleId) : undefined;
+  const selectedTitleGender = selectedTitle ? getChampionshipGender(selectedTitle) : undefined;
+
+  // Ineligible selected participants for title match
+  const ineligibleParticipants = selectedTitle && category === 'Match'
+    ? selectedParticipants
+        .map(id => promotion.roster.find(w => w.id === id))
+        .filter((w): w is Wrestler => Boolean(w && !isWrestlerEligibleForTitle(selectedTitle, w)))
+    : [];
+
+  // Identify participants already booked in other segments on tonight's card
+  const otherSegmentParticipantIds = new Set(
+    currentCard
+      .filter(s => s.id !== editingSegmentId)
+      .flatMap(s => s.participantIds)
+  );
+
+  const duplicateParticipantsSelected = selectedParticipants
+    .map(id => promotion.roster.find(w => w.id === id))
+    .filter((w): w is Wrestler => Boolean(w && otherSegmentParticipantIds.has(w.id)));
+
+  // Global show stats for the Roster Utilization Tracker
+  const allCardParticipantIds = currentCard.flatMap(s => s.participantIds);
+  const uniqueCardParticipantIds = new Set(allCardParticipantIds);
+  const duplicateCharacterCount = allCardParticipantIds.length - uniqueCardParticipantIds.size;
+  const utilizationPercentage = activeRoster.length > 0
+    ? Math.round((uniqueCardParticipantIds.size / activeRoster.length) * 100)
+    : 0;
 
   // Helper to start creating a new segment
   const handleStartAddSegment = () => {
@@ -129,6 +173,7 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
     setTitleId('');
     setFeudId('');
     setSegmentNotes('');
+    setRosterFilter('all');
     setIsAddingSegment(true);
   };
 
@@ -146,6 +191,7 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
     setTitleId(seg.titleId || '');
     setFeudId(seg.feudId || '');
     setSegmentNotes(seg.notes || '');
+    setRosterFilter('all');
     setIsAddingSegment(true);
   };
 
@@ -174,6 +220,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
   // Add or update segment on the card
   const handleSaveSegment = () => {
     if (selectedParticipants.length === 0) return;
+    // Strict block if there is a gender rule violation on a title match
+    if (ineligibleParticipants.length > 0) return;
 
     if (editingSegmentId) {
       // Update existing segment in place
@@ -241,80 +289,14 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
     onUpdateCard(reindexed);
   };
 
-  // Auto-Book Smart Card (Helper for GM)
+  const currentGM = promotion.currentGM || getDefaultGMForPromotion(promotion.style);
+
+  // Auto-Book Smart Card via General Manager
   const handleAutoBookCard = () => {
-    const available = [...activeRoster].sort((a, b) => b.overness - a.overness);
-    if (available.length < 6) return;
-
-    const autoSegments: Segment[] = [];
-    const topFeud = promotion.feuds[0];
-    const worldTitle = promotion.titles[0];
-
-    // Segment 1: Opener Match (High energy)
-    autoSegments.push({
-      id: `auto-1-${Date.now()}`,
-      segmentNumber: 1,
-      category: 'Match',
-      matchType: 'Singles',
-      participantIds: [available[4]?.id || available[0].id, available[5]?.id || available[1].id],
-      winnerId: available[4]?.id || available[0].id,
-      finishType: 'Clean Pinfall',
-      durationMinutes: 10
-    });
-
-    // Segment 2: Heated In-Ring Promo (Top Feud)
-    if (topFeud && topFeud.wrestlerAIds[0] && topFeud.wrestlerBIds[0]) {
-      autoSegments.push({
-        id: `auto-2-${Date.now()}`,
-        segmentNumber: 2,
-        category: 'Angle',
-        angleType: 'In-Ring Promo',
-        participantIds: [topFeud.wrestlerAIds[0], topFeud.wrestlerBIds[0]],
-        durationMinutes: 8,
-        feudId: topFeud.id
-      });
+    const proposal = generateGMProposal(promotion, currentGM.activeDirective, currentWeek, currentYear);
+    if (proposal.segments.length > 0) {
+      onUpdateCard(proposal.segments);
     }
-
-    // Segment 3: Upper Midcard Match
-    autoSegments.push({
-      id: `auto-3-${Date.now()}`,
-      segmentNumber: 3,
-      category: 'Match',
-      matchType: 'Hardcore / No DQ',
-      participantIds: [available[2]?.id || available[0].id, available[3]?.id || available[1].id],
-      winnerId: available[2]?.id || available[0].id,
-      finishType: 'Weapon / Foreign Object',
-      durationMinutes: 14
-    });
-
-    // Segment 4: Backstage Attack / Angle
-    autoSegments.push({
-      id: `auto-4-${Date.now()}`,
-      segmentNumber: 4,
-      category: 'Angle',
-      angleType: 'Backstage Ambush',
-      participantIds: [available[1]?.id || available[0].id, available[0]?.id],
-      durationMinutes: 5,
-      feudId: topFeud?.id
-    });
-
-    // Segment 5: Main Event (Championship match or marquee clash)
-    const mainA = available[0]?.id;
-    const mainB = available[1]?.id;
-    autoSegments.push({
-      id: `auto-5-${Date.now()}`,
-      segmentNumber: 5,
-      category: 'Match',
-      matchType: 'Singles',
-      participantIds: [mainA, mainB],
-      winnerId: mainA,
-      finishType: 'Clean Pinfall',
-      durationMinutes: 20,
-      titleId: worldTitle?.id,
-      feudId: topFeud?.id
-    });
-
-    onUpdateCard(autoSegments);
   };
 
   // Build Markdown table of current show card
@@ -463,6 +445,97 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
         </div>
       </div>
 
+      {/* GM Front Office & Auto-Book Desk */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-2xl shrink-0">
+            {currentGM.avatar}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white font-mono">{currentGM.name}</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-amber-300 border border-zinc-700">
+                GM • {currentGM.trustScore}% Trust
+              </span>
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Directive: <strong className="text-zinc-200">{(currentGM.activeDirective || currentGM.preferredDirective).replace(/_/g, ' ').toUpperCase()}</strong>
+              {' '}• Perk: <span className="text-amber-400">{currentGM.perk.name}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenGMOffice && (
+            <button
+              type="button"
+              onClick={onOpenGMOffice}
+              className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 text-xs font-mono flex items-center gap-1.5 transition"
+            >
+              <Briefcase className="w-3.5 h-3.5 text-amber-400" />
+              <span>GM Office & Directives</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleAutoBookCard}
+            className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-black border border-amber-500/40 text-xs font-mono font-bold flex items-center gap-1.5 transition"
+            title="Have GM auto-draft the entire television card according to active directive"
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span>Delegate to GM (Auto-Book)</span>
+          </button>
+
+          {currentCard.length >= 3 && (
+            <button
+              type="button"
+              onClick={onAdvanceWeek}
+              className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-mono font-bold flex items-center gap-1.5 transition shadow-sm"
+              title="One-click final approval: run and broadcast this card immediately"
+            >
+              <Check className="w-3.5 h-3.5 stroke-[3]" />
+              <span>Executive Approval: Run Show</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Real-time Roster Utilization & Character Overlap Tracker */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 font-mono text-xs">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-sky-400" />
+            <span className="text-zinc-300 font-bold">Roster Utilization:</span>
+            <span className="px-2 py-0.5 rounded bg-zinc-800 text-sky-300 font-bold border border-zinc-700">
+              {uniqueCardParticipantIds.size} / {activeRoster.length} Superstars ({utilizationPercentage}%)
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="text-zinc-400">Card Integrity:</span>
+            {duplicateCharacterCount === 0 ? (
+              <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-bold">
+                <Check className="w-3 h-3" /> 0 Duplicate Bookings
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1 font-bold">
+                <AlertTriangle className="w-3 h-3" /> {duplicateCharacterCount} Character Reuses
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-zinc-400">Title Sanctions:</span>
+            <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1 font-bold">
+              <span>🛡️ Gender Segregated</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Markdown Table of the Card */}
       <MarkdownTableView
         title={`SHOW CARD: ${promotion.weeklyTVShow.toUpperCase()} (${currentCard.length} SEGMENTS)`}
@@ -591,6 +664,14 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                       <div className="text-xs text-zinc-300 font-sans bg-zinc-950/80 px-2.5 py-1.5 rounded border border-zinc-800/80 mt-1 max-w-xl">
                         <span className="text-zinc-500 font-mono text-[10px] uppercase font-bold mr-1.5">Notes:</span>
                         {seg.notes}
+                      </div>
+                    )}
+
+                    {/* GM Rationale Note */}
+                    {seg.gmRationale && (
+                      <div className="text-xs text-amber-300 font-sans bg-amber-500/10 px-2.5 py-1.5 rounded border border-amber-500/20 mt-1 max-w-xl flex items-start gap-1.5">
+                        <span className="text-amber-400 font-mono text-[10px] uppercase font-bold shrink-0">GM NOTE:</span>
+                        <span>{seg.gmRationale}</span>
                       </div>
                     )}
                   </div>
@@ -795,6 +876,32 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                 <span className="text-[11px] text-zinc-500 font-mono">Click to toggle wrestlers</span>
               </div>
 
+              {/* Roster Division & Availability Filter Tabs */}
+              <div className="flex items-center gap-1.5 flex-wrap font-mono text-[11px] pb-1">
+                <span className="text-zinc-500">Filter Roster:</span>
+                {(['all', 'unbooked', 'men', 'women'] as const).map(tab => {
+                  const label = 
+                    tab === 'all' ? `All (${activeRoster.length})` :
+                    tab === 'unbooked' ? `Unbooked Only (${activeRoster.filter(w => !otherSegmentParticipantIds.has(w.id)).length})` :
+                    tab === 'men' ? `Men's Division (${activeRoster.filter(w => w.gender === 'Male').length})` :
+                    `Women's Division (${activeRoster.filter(w => w.gender === 'Female').length})`;
+                  return (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setRosterFilter(tab)}
+                      className={`px-2 py-0.5 rounded border transition ${
+                        rosterFilter === tab
+                          ? 'bg-amber-500 text-black border-amber-500 font-bold'
+                          : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Quick Tag Team Insert Helper */}
               {promotion.tagTeams && promotion.tagTeams.length > 0 && (
                 <div className="flex items-center gap-1.5 flex-wrap font-mono text-xs pb-1">
@@ -815,49 +922,92 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
               )}
 
               <div className="max-h-48 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 bg-zinc-950 rounded border border-zinc-800 font-mono text-xs">
-                {activeRoster.map(w => {
-                  const isSelected = selectedParticipants.includes(w.id);
-                  const appearancesOnCard = currentCard.filter(s => s.participantIds.includes(w.id)).length;
-                  const gimmickGrade = w.gimmick?.grade || 'B';
+                {activeRoster
+                  .filter(w => {
+                    if (rosterFilter === 'unbooked') return !otherSegmentParticipantIds.has(w.id);
+                    if (rosterFilter === 'men') return w.gender === 'Male';
+                    if (rosterFilter === 'women') return w.gender === 'Female';
+                    return true;
+                  })
+                  .map(w => {
+                    const isSelected = selectedParticipants.includes(w.id);
+                    const appearancesOnCard = currentCard.filter(s => s.participantIds.includes(w.id)).length;
+                    const isBookedElsewhere = otherSegmentParticipantIds.has(w.id);
+                    const gimmickGrade = w.gimmick?.grade || 'B';
+                    const isGenderRestricted = selectedTitle && category === 'Match' && !isWrestlerEligibleForTitle(selectedTitle, w);
 
-                  return (
-                    <div
-                      key={w.id}
-                      onClick={() => toggleParticipant(w.id)}
-                      className={`p-2 rounded border cursor-pointer flex flex-col justify-between transition ${
-                        isSelected
-                          ? 'bg-amber-500/20 border-amber-500 text-white'
-                          : 'bg-zinc-900 border-zinc-800/80 text-zinc-300 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold truncate">{w.name}</span>
-                        <div className="flex items-center gap-1">
-                          <span className={`text-[9px] px-1 rounded font-bold ${
-                            gimmickGrade === 'S' ? 'bg-amber-400 text-black' :
-                            gimmickGrade === 'A' ? 'bg-emerald-500 text-black' :
-                            gimmickGrade === 'F' ? 'bg-rose-600 text-white' : 'bg-zinc-800 text-zinc-300'
-                          }`}>
-                            {gimmickGrade}
-                          </span>
-                          <span className={`text-[10px] px-1 rounded ${w.alignment === 'Face' ? 'text-sky-400 bg-sky-950' : 'text-rose-400 bg-rose-950'}`}>
-                            {w.alignment}
-                          </span>
+                    return (
+                      <div
+                        key={w.id}
+                        onClick={() => toggleParticipant(w.id)}
+                        className={`p-2 rounded border cursor-pointer flex flex-col justify-between transition ${
+                          isGenderRestricted
+                            ? 'bg-rose-950/20 border-rose-900/60 opacity-60'
+                            : isSelected
+                            ? 'bg-amber-500/20 border-amber-500 text-white'
+                            : 'bg-zinc-900 border-zinc-800/80 text-zinc-300 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold truncate">{w.name}</span>
+                          <div className="flex items-center gap-1">
+                            <span className={`text-[9px] px-1 rounded font-bold ${
+                              gimmickGrade === 'S' ? 'bg-amber-400 text-black' :
+                              gimmickGrade === 'A' ? 'bg-emerald-500 text-black' :
+                              gimmickGrade === 'F' ? 'bg-rose-600 text-white' : 'bg-zinc-800 text-zinc-300'
+                            }`}>
+                              {gimmickGrade}
+                            </span>
+                            <span className={`text-[10px] px-1 rounded ${w.gender === 'Female' ? 'text-pink-400 bg-pink-950 border border-pink-900/50' : 'text-blue-400 bg-blue-950 border border-blue-900/50'}`}>
+                              {w.gender === 'Female' ? '♀' : '♂'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Restriction and appearance warnings */}
+                        {isGenderRestricted ? (
+                          <div className="text-[10px] text-rose-400 font-bold mt-1">
+                            🚫 Ineligible: {selectedTitleGender}'s Title Only
+                          </div>
+                        ) : null}
+
+                        <div className="flex items-center justify-between text-[10px] text-zinc-400 mt-1">
+                          <span>Pop: {w.overness} | Work: {w.workrate}</span>
+                          {isBookedElsewhere ? (
+                            <span className="text-amber-400 font-bold" title={`Already on show card ${appearancesOnCard}x`}>
+                              ⚠️ In Seg #{currentCard.find(s => s.id !== editingSegmentId && s.participantIds.includes(w.id))?.segmentNumber}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-400/80 text-[9px]">Available</span>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center justify-between text-[10px] text-zinc-400 mt-1">
-                        <span>Pop: {w.overness} | Work: {w.workrate}</span>
-                        {appearancesOnCard > 0 && (
-                          <span className="text-amber-400" title={`Already on show card ${appearancesOnCard}x`}>
-                            ⚠️ x{appearancesOnCard}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </div>
+
+            {/* Warnings and alerts */}
+            {ineligibleParticipants.length > 0 && (
+              <div className="p-3 rounded-lg bg-rose-950/80 border border-rose-700/80 text-rose-200 font-mono text-xs flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+                <div>
+                  <strong className="text-rose-100">Championship Gender Restriction Violation:</strong>
+                  <p className="text-[11px] text-rose-300 mt-0.5">
+                    "{selectedTitle?.name}" is strictly a <strong>{selectedTitleGender}</strong> championship. The following selected competitor(s) cannot challenge or hold this belt: <span className="underline font-bold">{ineligibleParticipants.map(w => w.name).join(', ')}</span>. Please remove them or change the championship.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {duplicateParticipantsSelected.length > 0 && (
+              <div className="p-2.5 rounded-lg bg-amber-950/40 border border-amber-800/60 text-amber-200 font-mono text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-[11px]">
+                  <strong>Roster Utilization Notice:</strong> {duplicateParticipantsSelected.map(w => w.name).join(', ')} is already booked elsewhere on tonight's broadcast. Single-segment booking is recommended to keep the roster fresh and rotate TV time.
+                </span>
+              </div>
+            )}
 
             {/* Match Specifics: Winner, Finish, Stakes */}
             {category === 'Match' && (
@@ -902,12 +1052,13 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                   >
                     <option value="">-- Non-Title Match --</option>
                     {promotion.titles.filter(t => !t.isRetired).map(t => {
+                      const badge = getChampionshipGenderBadge(t);
                       const holderNames = t.currentHolderIds
                         .map(id => promotion.roster.find(w => w.id === id)?.name || id)
                         .join(' & ') || 'VACANT';
                       return (
                         <option key={t.id} value={t.id}>
-                          🏆 {t.name} [{holderNames}] (Prestige: {t.prestige})
+                          [{badge.label}] 🏆 {t.name} [{holderNames}] (Prestige: {t.prestige})
                         </option>
                       );
                     })}
@@ -994,10 +1145,15 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
               <button
                 type="button"
                 onClick={handleSaveSegment}
-                disabled={selectedParticipants.length === 0}
+                disabled={selectedParticipants.length === 0 || ineligibleParticipants.length > 0}
                 className="px-5 py-2 rounded bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:hover:bg-amber-500 text-black font-bold transition shadow"
+                title={ineligibleParticipants.length > 0 ? "Cannot save: Gender restriction violation on title match" : undefined}
               >
-                {editingSegmentId ? 'Save Segment Changes' : 'Save Segment to Card'}
+                {ineligibleParticipants.length > 0 
+                  ? 'Resolve Title Gender Conflict' 
+                  : editingSegmentId 
+                  ? 'Save Segment Changes' 
+                  : 'Save Segment to Card'}
               </button>
             </div>
           </div>

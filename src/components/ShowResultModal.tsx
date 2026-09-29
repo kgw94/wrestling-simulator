@@ -112,6 +112,26 @@ export const ShowResultModal: React.FC<ShowResultModalProps> = ({
           </div>
         </div>
 
+        {/* GM Post-Show Debrief */}
+        {showResult.gmFeedback && (
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3.5">
+            <span className="text-2xl shrink-0 mt-0.5">{showResult.gmFeedback.gmAvatar}</span>
+            <div className="text-xs font-mono">
+              <div className="flex items-center gap-2">
+                <span className="text-amber-400 font-bold uppercase">
+                  {showResult.gmFeedback.gmName} (General Manager Debrief):
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] bg-zinc-900 border border-amber-500/30 text-amber-300 font-bold uppercase">
+                  {showResult.gmFeedback.reaction}
+                </span>
+              </div>
+              <p className="text-zinc-200 mt-1 leading-relaxed font-sans italic">
+                &ldquo;{showResult.gmFeedback.quote}&rdquo;
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Clean Markdown Table */}
         <MarkdownTableView
           title="SHOW RATINGS & SEGMENT BREAKDOWN (EWR METRICS)"

@@ -1,20 +1,22 @@
 import React from 'react';
 import { Promotion, GameState } from '../types';
-import { DollarSign, Star, Flame, Calendar, Tv, Users, ShieldAlert, Palette, Settings } from 'lucide-react';
+import { DollarSign, Star, Flame, Calendar, Tv, Users, ShieldAlert, Palette, Settings, Briefcase, HardDrive } from 'lucide-react';
 import { formatNumber } from '../utils/format';
 import { getResolvedTheme } from '../data/themes';
 
 interface HeaderSummaryProps {
   gameState: GameState;
   onNavigate?: (view: GameState['currentView']) => void;
+  onOpenSaveModal?: () => void;
 }
 
-export const HeaderSummary: React.FC<HeaderSummaryProps> = ({ gameState, onNavigate }) => {
+export const HeaderSummary: React.FC<HeaderSummaryProps> = ({ gameState, onNavigate, onOpenSaveModal }) => {
   const { promotion, currentWeek, currentYear, averageShowRating, topFeudHeat } = gameState;
 
   const topFeud = promotion.feuds.slice().sort((a, b) => b.heat - a.heat)[0];
   const injuredCount = promotion.roster.filter(w => w.injury.injured).length;
   const resolvedTheme = getResolvedTheme(gameState.themeSettings || gameState.promotion?.themeSettings);
+  const currentGM = promotion.currentGM;
 
   return (
     <header className={`${resolvedTheme.navBgClass} border-b ${resolvedTheme.navBorderClass} text-zinc-100 backdrop-blur sticky top-0 z-40 transition-colors duration-200`}>
@@ -48,6 +50,26 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({ gameState, onNavig
                     style={{ backgroundColor: resolvedTheme.accentDef.hex }} 
                   />
                 </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.('gm_office')}
+                  className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px] font-mono transition"
+                  title="Open General Manager Booking Desk [G]"
+                >
+                  <Briefcase className="w-3 h-3 text-amber-400" />
+                  <span>GM Desk</span>
+                </button>
+                {onOpenSaveModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenSaveModal}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 text-[11px] font-mono transition"
+                    title="Import / Export Save Game File"
+                  >
+                    <HardDrive className="w-3 h-3 text-emerald-400" />
+                    <span>Save / Load</span>
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-3 text-xs text-zinc-400 mt-0.5 font-mono">
                 <span className="flex items-center gap-1">

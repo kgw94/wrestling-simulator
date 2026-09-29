@@ -152,7 +152,7 @@ export const THEME_PRESETS: ThemePresetDefinition[] = [
     eraTag: 'Golden Age Territory',
     tagline: 'Weathered Brass, Leather & Tobacco Smoke',
     description: 'Warm sepia-tinted charcoal and weathered brass accents celebrating the historic southern territory booking circuits.',
-    defaultAccent: 'bronze',
+    defaultAccent: 'orange',
     defaultBg: 'obsidian',
     previewColors: {
       bg: '#0d0a07',

@@ -27,6 +27,7 @@ export interface ChampionshipTemplate {
   shortName: string;
   type: ChampionshipType;
   division: TitleDivision;
+  gender: 'Male' | 'Female' | 'Open';
   prestige: number;
   isTagTeam: boolean;
   strapColor: BeltStrapColor;
@@ -41,6 +42,7 @@ export const CHAMPIONSHIP_TEMPLATES: ChampionshipTemplate[] = [
     shortName: 'WHC',
     type: 'World / Primary',
     division: 'Heavyweight',
+    gender: 'Male',
     prestige: 95,
     isTagTeam: false,
     strapColor: 'Classic Black',
@@ -53,6 +55,7 @@ export const CHAMPIONSHIP_TEMPLATES: ChampionshipTemplate[] = [
     shortName: 'IC',
     type: 'Secondary / Midcard',
     division: 'Openweight',
+    gender: 'Male',
     prestige: 82,
     isTagTeam: false,
     strapColor: 'Pure White',
@@ -65,6 +68,7 @@ export const CHAMPIONSHIP_TEMPLATES: ChampionshipTemplate[] = [
     shortName: 'TAG',
     type: 'Tag Team',
     division: 'Tag Team',
+    gender: 'Male',
     prestige: 84,
     isTagTeam: true,
     strapColor: 'Classic Black',
@@ -77,6 +81,7 @@ export const CHAMPIONSHIP_TEMPLATES: ChampionshipTemplate[] = [
     shortName: 'W-WORLD',
     type: 'Women\'s',
     division: 'Women',
+    gender: 'Female',
     prestige: 88,
     isTagTeam: false,
     strapColor: 'Pure White',
@@ -89,6 +94,7 @@ export const CHAMPIONSHIP_TEMPLATES: ChampionshipTemplate[] = [
     shortName: 'TV',
     type: 'Tertiary / TV',
     division: 'Openweight',
+    gender: 'Male',
     prestige: 72,
     isTagTeam: false,
     strapColor: 'Crimson Red',
@@ -101,6 +107,7 @@ export const CHAMPIONSHIP_TEMPLATES: ChampionshipTemplate[] = [
     shortName: 'CW',
     type: 'Cruiserweight / High-Flyer',
     division: 'Cruiserweight',
+    gender: 'Male',
     prestige: 78,
     isTagTeam: false,
     strapColor: 'Toxic Purple',
@@ -113,6 +120,7 @@ export const CHAMPIONSHIP_TEMPLATES: ChampionshipTemplate[] = [
     shortName: 'HARDCORE',
     type: 'Hardcore / 24/7',
     division: 'Openweight',
+    gender: 'Open',
     prestige: 64,
     isTagTeam: false,
     strapColor: 'Midnight Blue',
@@ -125,6 +133,7 @@ export const CHAMPIONSHIP_TEMPLATES: ChampionshipTemplate[] = [
     shortName: 'PURE',
     type: 'Heritage / Custom',
     division: 'Openweight',
+    gender: 'Male',
     prestige: 86,
     isTagTeam: false,
     strapColor: 'Championship Gold',

@@ -39,6 +39,9 @@ import { LockerRoomView } from './components/LockerRoomView';
 import { SandboxCustomizerView } from './components/SandboxCustomizerView';
 import { WritersHubView } from './components/WritersHubView';
 import { HallOfFameView } from './components/HallOfFameView';
+import { GMOfficeView } from './components/GMOfficeView';
+import { SaveGameModal } from './components/SaveGameModal';
+import { getDefaultGMForPromotion, DEFAULT_AVAILABLE_GMS } from './engine/gmEngine';
 import { ThemeSettings } from './types';
 import { DEFAULT_THEME_SETTINGS, getResolvedTheme } from './data/themes';
 import { 
@@ -58,7 +61,9 @@ import {
   PenTool, 
   Trophy, 
   Palette,
-  Settings
+  Settings,
+  Briefcase,
+  HardDrive
 } from 'lucide-react';
 
 const STORAGE_KEY = 'ewr_wrestling_simulator_state_v1';
@@ -156,6 +161,12 @@ export default function App() {
           if (!parsed.promotion.themeSettings) {
             parsed.promotion.themeSettings = parsed.themeSettings;
           }
+          if (!parsed.promotion.currentGM) {
+            parsed.promotion.currentGM = getDefaultGMForPromotion(parsed.promotion.style);
+          }
+          if (!parsed.promotion.availableGMs || parsed.promotion.availableGMs.length === 0) {
+            parsed.promotion.availableGMs = DEFAULT_AVAILABLE_GMS;
+          }
           return parsed;
         }
       }
@@ -177,7 +188,9 @@ export default function App() {
       creativePhilosophy: 'Sports Entertainment Spectacle' as const,
       hallOfFame: DEFAULT_HALL_OF_FAME_INDUCTEES,
       retiredRoster: DEFAULT_RETIRED_WRESTLERS,
-      themeSettings: DEFAULT_THEME_SETTINGS
+      themeSettings: DEFAULT_THEME_SETTINGS,
+      currentGM: getDefaultGMForPromotion(PRESET_PROMOTIONS[0].style),
+      availableGMs: DEFAULT_AVAILABLE_GMS
     };
 
     return {
@@ -215,6 +228,8 @@ export default function App() {
     };
   });
 
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+
   // Save game state changes to localStorage
   useEffect(() => {
     try {
@@ -243,7 +258,9 @@ export default function App() {
       creativePhilosophy: selectedPromotion.creativePhilosophy || 'Sports Entertainment Spectacle',
       hallOfFame: selectedPromotion.hallOfFame || DEFAULT_HALL_OF_FAME_INDUCTEES,
       retiredRoster: selectedPromotion.retiredRoster || DEFAULT_RETIRED_WRESTLERS,
-      themeSettings: activeTheme
+      themeSettings: activeTheme,
+      currentGM: selectedPromotion.currentGM || getDefaultGMForPromotion(selectedPromotion.style),
+      availableGMs: selectedPromotion.availableGMs || DEFAULT_AVAILABLE_GMS
     };
     const topFeud = promoWithDefaults.feuds.slice().sort((a, b) => b.heat - a.heat)[0];
     setGameState({
@@ -310,7 +327,7 @@ export default function App() {
     const cardToSimulate =
       gameState.currentShowCard.length > 0
         ? gameState.currentShowCard
-        : autoGenerateShowCard(gameState.promotion);
+        : autoGenerateShowCard(gameState.promotion, gameState.currentWeek, gameState.currentYear);
 
     if (cardToSimulate.length === 0) return;
 
@@ -387,6 +404,8 @@ export default function App() {
       } else if (e.key === 'p' || e.key === 'P') {
         setGameState(prev => ({ ...prev, currentView: 'ppv_calendar' }));
       } else if (e.key === 'g' || e.key === 'G') {
+        setGameState(prev => ({ ...prev, currentView: 'gm_office' }));
+      } else if (e.key === 'k' || e.key === 'K') {
         setGameState(prev => ({ ...prev, currentView: 'gimmick_lab' }));
       } else if (e.key === 't' || e.key === 'T') {
         setGameState(prev => ({ ...prev, currentView: 'tag_factions' }));
@@ -426,7 +445,29 @@ export default function App() {
 
   // If promotion not yet chosen, show initial setup screen
   if (!gameState.hasStarted) {
-    return <SetupMenu onStartGame={handleStartGame} />;
+    return (
+      <>
+        <SetupMenu 
+          onStartGame={handleStartGame} 
+          onOpenSaveModal={() => setIsSaveModalOpen(true)}
+        />
+        {isSaveModalOpen && (
+          <SaveGameModal
+            gameState={gameState}
+            onRestoreSave={restored => {
+              setGameState(restored);
+              try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
+              } catch (e) {
+                console.error(e);
+              }
+              setIsSaveModalOpen(false);
+            }}
+            onClose={() => setIsSaveModalOpen(false)}
+          />
+        )}
+      </>
+    );
   }
 
   return (
@@ -435,6 +476,7 @@ export default function App() {
       <HeaderSummary
         gameState={gameState}
         onNavigate={view => setGameState(prev => ({ ...prev, currentView: view }))}
+        onOpenSaveModal={() => setIsSaveModalOpen(true)}
       />
 
       {/* Main Action Navigation Bar with Numbered Options */}
@@ -629,6 +671,30 @@ export default function App() {
               <Newspaper className="w-3.5 h-3.5" />
               <span className="hidden md:inline">News</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setGameState(prev => ({ ...prev, currentView: 'gm_office' }))}
+              className={`px-2.5 py-1.5 rounded transition flex items-center gap-1 font-bold ${
+                gameState.currentView === 'gm_office'
+                  ? 'bg-amber-500 text-black shadow'
+                  : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+              }`}
+              title="General Manager Booking Desk [G]"
+            >
+              <Briefcase className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden lg:inline">GM Desk</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsSaveModalOpen(true)}
+              className="px-2.5 py-1.5 rounded transition flex items-center gap-1 font-bold text-zinc-300 hover:text-white hover:bg-zinc-800 border border-zinc-700/60"
+              title="Save & Load Game (JSON Import/Export)"
+            >
+              <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden xl:inline">Save/Load</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -666,6 +732,7 @@ export default function App() {
             gameState={gameState}
             onNavigate={view => setGameState(prev => ({ ...prev, currentView: view }))}
             onAdvanceWeek={handleAdvanceWeek}
+            onOpenSaveModal={() => setIsSaveModalOpen(true)}
           />
         )}
 
@@ -678,6 +745,7 @@ export default function App() {
             onUpdateCard={newCard => setGameState(prev => ({ ...prev, currentShowCard: newCard }))}
             onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
             onAdvanceWeek={handleAdvanceWeek}
+            onOpenGMOffice={() => setGameState(prev => ({ ...prev, currentView: 'gm_office' }))}
           />
         )}
 
@@ -821,6 +889,31 @@ export default function App() {
               }))
             }
             onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
+            onOpenSaveModal={() => setIsSaveModalOpen(true)}
+          />
+        )}
+
+        {gameState.currentView === 'gm_office' && (
+          <GMOfficeView
+            promotion={gameState.promotion}
+            currentWeek={gameState.currentWeek}
+            currentYear={gameState.currentYear}
+            currentCard={gameState.currentShowCard}
+            onUpdatePromotion={newPromo =>
+              setGameState(prev => ({
+                ...prev,
+                promotion: newPromo
+              }))
+            }
+            onUpdateCard={newCard =>
+              setGameState(prev => ({
+                ...prev,
+                currentShowCard: newCard
+              }))
+            }
+            onAdvanceWeek={handleAdvanceWeek}
+            onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
+            onOpenBookShow={() => setGameState(prev => ({ ...prev, currentView: 'book_show' }))}
           />
         )}
 
@@ -883,6 +976,23 @@ export default function App() {
           showResult={gameState.latestShowResult}
           promotion={gameState.promotion}
           onClose={() => setGameState(prev => ({ ...prev, latestShowResult: undefined }))}
+        />
+      )}
+
+      {/* Save Game Import / Export Modal */}
+      {isSaveModalOpen && (
+        <SaveGameModal
+          gameState={gameState}
+          onRestoreSave={restored => {
+            setGameState(restored);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
+            } catch (e) {
+              console.error(e);
+            }
+            setIsSaveModalOpen(false);
+          }}
+          onClose={() => setIsSaveModalOpen(false)}
         />
       )}
     </div>

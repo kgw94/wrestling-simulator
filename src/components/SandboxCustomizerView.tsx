@@ -31,7 +31,8 @@ import {
   Eye,
   CheckCircle2,
   Calendar,
-  Star
+  Star,
+  HardDrive
 } from 'lucide-react';
 
 interface SandboxCustomizerViewProps {
@@ -42,6 +43,7 @@ interface SandboxCustomizerViewProps {
   onBackToMenu: () => void;
   themeSettings?: ThemeSettings;
   onUpdateThemeSettings?: (newTheme: ThemeSettings) => void;
+  onOpenSaveModal?: () => void;
 }
 
 type SettingsTab = 'theme_colors' | 'promotion_params' | 'match_builder';
@@ -53,7 +55,8 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
   onUpdateDifficulty,
   onBackToMenu,
   themeSettings = DEFAULT_THEME_SETTINGS,
-  onUpdateThemeSettings
+  onUpdateThemeSettings,
+  onOpenSaveModal
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('theme_colors');
   const [promoForm, setPromoForm] = useState<Promotion>({ ...promotion });
@@ -317,6 +320,17 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
           <Swords className="w-4 h-4" />
           <span>Custom Match Rules ({customMatchRules.length})</span>
         </button>
+
+        {onOpenSaveModal && (
+          <button
+            type="button"
+            onClick={onOpenSaveModal}
+            className="px-4 py-2 text-xs font-mono font-bold rounded-md transition flex items-center gap-2 shrink-0 text-emerald-400 hover:text-white hover:bg-zinc-800/80 ml-auto border border-emerald-500/30"
+          >
+            <HardDrive className="w-4 h-4 text-emerald-400" />
+            <span>Save & Load Game (JSON)</span>
+          </button>
+        )}
       </div>
 
       {/* ============================================================ */}
