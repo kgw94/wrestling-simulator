@@ -302,7 +302,11 @@ export const DEFAULT_CUSTOM_MATCH_RULES: CustomMatchRule[] = [
     spectacleBonus: 14,
     injuryRiskBonus: 12,
     isElimination: false,
-    isTitleEligible: true
+    isTitleEligible: true,
+    enclosure: 'Hell in a Cell',
+    winCondition: 'Pinfall & Submission',
+    hazardLevel: 'Extreme Weapons',
+    fallsCountAnywhere: false
   },
   {
     id: 'match-rule-tlc',
@@ -315,7 +319,45 @@ export const DEFAULT_CUSTOM_MATCH_RULES: CustomMatchRule[] = [
     spectacleBonus: 15,
     injuryRiskBonus: 15,
     isElimination: false,
-    isTitleEligible: true
+    isTitleEligible: true,
+    enclosure: 'Standard Ring',
+    winCondition: 'Object / Ladder Retrieval',
+    hazardLevel: 'Extreme Weapons',
+    fallsCountAnywhere: false
+  },
+  {
+    id: 'match-rule-wargames',
+    name: 'WarGames (The Match Beyond)',
+    description: 'Two rings enclosed in a steel cage roof. Staggered 5v5 team entry until surrender or submission.',
+    minParticipants: 6,
+    maxParticipants: 10,
+    dangerLevel: 'Extremely Brutal',
+    workrateMultiplier: 1.30,
+    spectacleBonus: 20,
+    injuryRiskBonus: 16,
+    isElimination: false,
+    isTitleEligible: false,
+    enclosure: 'Double Ring Cage',
+    winCondition: 'Pinfall & Submission',
+    hazardLevel: 'Extreme Weapons',
+    fallsCountAnywhere: false
+  },
+  {
+    id: 'match-rule-exploding-barbed-wire',
+    name: 'Exploding Barbed Wire Deathmatch',
+    description: 'Ropes replaced with electrified barbed wire and contact detonators. Extreme spectacle and danger.',
+    minParticipants: 2,
+    maxParticipants: 4,
+    dangerLevel: 'Extremely Brutal',
+    workrateMultiplier: 1.10,
+    spectacleBonus: 22,
+    injuryRiskBonus: 22,
+    isElimination: false,
+    isTitleEligible: true,
+    enclosure: 'Barbed Wire',
+    winCondition: 'Pinfall & Submission',
+    hazardLevel: 'Lethal Explosives & Fire',
+    fallsCountAnywhere: false
   },
   {
     id: 'match-rule-lms',
@@ -324,11 +366,15 @@ export const DEFAULT_CUSTOM_MATCH_RULES: CustomMatchRule[] = [
     minParticipants: 2,
     maxParticipants: 2,
     dangerLevel: 'Dangerous',
-    workrateMultiplier: 1.1,
+    workrateMultiplier: 1.10,
     spectacleBonus: 10,
     injuryRiskBonus: 8,
     isElimination: false,
-    isTitleEligible: true
+    isTitleEligible: true,
+    enclosure: 'Standard Ring',
+    winCondition: 'Last Man Standing',
+    hazardLevel: 'Extreme Weapons',
+    fallsCountAnywhere: true
   },
   {
     id: 'match-rule-fca',
@@ -341,7 +387,11 @@ export const DEFAULT_CUSTOM_MATCH_RULES: CustomMatchRule[] = [
     spectacleBonus: 8,
     injuryRiskBonus: 5,
     isElimination: false,
-    isTitleEligible: true
+    isTitleEligible: true,
+    enclosure: 'Empty Arena',
+    winCondition: 'Pinfall & Submission',
+    hazardLevel: 'Standard Ringside',
+    fallsCountAnywhere: true
   },
   {
     id: 'match-rule-battle-royal',
@@ -350,37 +400,15 @@ export const DEFAULT_CUSTOM_MATCH_RULES: CustomMatchRule[] = [
     minParticipants: 4,
     maxParticipants: 30,
     dangerLevel: 'Moderate',
-    workrateMultiplier: 0.9,
+    workrateMultiplier: 0.90,
     spectacleBonus: 12,
     injuryRiskBonus: 4,
     isElimination: true,
-    isTitleEligible: false
-  },
-  {
-    id: 'match-rule-6man',
-    name: '6-Man Tag Team Showcase',
-    description: 'High-paced 3v3 trios warfare between rival factions or top stars.',
-    minParticipants: 6,
-    maxParticipants: 6,
-    dangerLevel: 'Moderate',
-    workrateMultiplier: 1.15,
-    spectacleBonus: 9,
-    injuryRiskBonus: 4,
-    isElimination: false,
-    isTitleEligible: true
-  },
-  {
-    id: 'match-rule-chamber',
-    name: 'Elimination Chamber',
-    description: 'Six gladiators inside the chain-link dome with 4 glass pods. Surviving champion takes all.',
-    minParticipants: 6,
-    maxParticipants: 6,
-    dangerLevel: 'Extremely Brutal',
-    workrateMultiplier: 1.2,
-    spectacleBonus: 18,
-    injuryRiskBonus: 14,
-    isElimination: true,
-    isTitleEligible: true
+    isTitleEligible: false,
+    enclosure: 'Standard Ring',
+    winCondition: 'Over The Top Rope',
+    hazardLevel: 'Pure Athletic',
+    fallsCountAnywhere: false
   },
   {
     id: 'match-rule-ironman60',
@@ -393,7 +421,46 @@ export const DEFAULT_CUSTOM_MATCH_RULES: CustomMatchRule[] = [
     spectacleBonus: 12,
     injuryRiskBonus: 2,
     isElimination: false,
-    isTitleEligible: true
+    isTitleEligible: true,
+    enclosure: 'Standard Ring',
+    winCondition: 'Iron Man (Most Falls)',
+    hazardLevel: 'Pure Athletic',
+    timeLimitMinutes: 60,
+    fallsCountAnywhere: false
+  },
+  {
+    id: 'match-rule-buried-alive',
+    name: 'Buried Alive Match',
+    description: 'No DQ, no pinfall. To win, a superstar must incapacitate their foe and bury them beneath 6 feet of dirt.',
+    minParticipants: 2,
+    maxParticipants: 2,
+    dangerLevel: 'Extremely Brutal',
+    workrateMultiplier: 1.05,
+    spectacleBonus: 16,
+    injuryRiskBonus: 14,
+    isElimination: false,
+    isTitleEligible: true,
+    enclosure: 'Empty Arena',
+    winCondition: 'Buried / Casket',
+    hazardLevel: 'Extreme Weapons',
+    fallsCountAnywhere: true
+  },
+  {
+    id: 'match-rule-chamber',
+    name: 'Elimination Chamber',
+    description: 'Six gladiators inside the chain-link dome with 4 glass pods. Surviving champion takes all.',
+    minParticipants: 6,
+    maxParticipants: 6,
+    dangerLevel: 'Extremely Brutal',
+    workrateMultiplier: 1.20,
+    spectacleBonus: 18,
+    injuryRiskBonus: 14,
+    isElimination: true,
+    isTitleEligible: true,
+    enclosure: 'Hell in a Cell',
+    winCondition: 'Pinfall & Submission',
+    hazardLevel: 'Extreme Weapons',
+    fallsCountAnywhere: false
   }
 ];
 

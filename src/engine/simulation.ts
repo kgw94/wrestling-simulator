@@ -20,6 +20,7 @@ import {
 } from '../data/customDefaults';
 import { generateGMPostShowDebrief, generateGMProposal } from './gmEngine';
 import { validateMatchTitleGender, isWrestlerEligibleForTitle } from '../utils/titleUtils';
+import { resolveTournamentMatch, applyTournamentCompletionEffects } from './tournamentEngine';
 
 export function calculateStarRating(score: number): { stars: number; starString: string } {
   if (score >= 95) return { stars: 5.0, starString: '5.00 Stars ★★★★★' };
@@ -230,7 +231,20 @@ export function evaluateSegment(
         const multBonus = Math.round((rule.workrateMultiplier - 1.0) * avgWorkrate * 0.4);
         score += (multBonus + rule.spectacleBonus);
         notes.push(`Custom Stipulation '${rule.name}' (+${rule.spectacleBonus + multBonus} pts): ${rule.description}`);
+        if (rule.enclosure && rule.enclosure !== 'Standard Ring') {
+          score += 2;
+          notes.push(`Enclosure: Contested inside ${rule.enclosure} (+2 pts spectacle).`);
+        }
+        if (rule.winCondition && rule.winCondition !== 'Pinfall & Submission') {
+          notes.push(`Unique Win Condition: Must achieve victory via ${rule.winCondition}.`);
+        }
       }
+    }
+
+    // Tournament match prestige bonus
+    if (segment.tournamentId && segment.tournamentMatchId) {
+      score += 4;
+      notes.push(`Tournament Stakes (+4 pts): High tournament tournament advancement implications elevated crowd tension.`);
     }
 
     // Alignment dynamic: Face vs Heel has natural heat
@@ -509,7 +523,7 @@ export function advanceWeekEngine(
 
   const newNews: NewsItem[] = [];
   const updatedRoster: Wrestler[] = promotion.roster.map(w => ({ ...w }));
-  const updatedTitles = promotion.titles.map(t => ({ ...t }));
+  let updatedTitles = promotion.titles.map(t => ({ ...t }));
   const updatedFeuds = promotion.feuds.map(f => ({ ...f }));
 
   // Track who was booked
@@ -725,8 +739,16 @@ export function advanceWeekEngine(
   const injuryMultiplier = difficulty === 'Hard' ? 1.5 : difficulty === 'Easy' ? 0.6 : 1.0;
   currentShowCard.forEach(seg => {
     if (seg.category === 'Match') {
-      const isHighRisk = seg.matchType === 'Hardcore / No DQ' || seg.matchType === 'Steel Cage' || seg.matchType === 'Ladder Match';
-      const baseChance = isHighRisk ? 0.08 : 0.02;
+      const isHighRisk = seg.matchType === 'Hardcore / No DQ' || seg.matchType === 'Steel Cage' || seg.matchType === 'Ladder Match' || seg.matchType === 'Hell in a Cell' || seg.matchType === 'TLC (Tables Ladders Chairs)';
+      let customRiskBonus = 0;
+      if (seg.customMatchRuleId) {
+        const customRules = [...(promotion?.customMatchRules || []), ...DEFAULT_CUSTOM_MATCH_RULES];
+        const rule = customRules.find(r => r.id === seg.customMatchRuleId);
+        if (rule) {
+          customRiskBonus = (rule.injuryRiskBonus || 0) / 100;
+        }
+      }
+      const baseChance = (isHighRisk ? 0.08 : 0.02) + customRiskBonus;
 
       seg.participantIds.forEach(id => {
         const wrestler = updatedRoster.find(w => w.id === id);
@@ -965,7 +987,7 @@ export function advanceWeekEngine(
   const updatedRetiredRoster = [...(promotion.retiredRoster || [])];
 
   // Natural Retirement Evaluation based on retirementAge, age curves, and injury history
-  const remainingActiveRoster: Wrestler[] = [];
+  let remainingActiveRoster: Wrestler[] = [];
   updatedRoster.forEach(w => {
     const isChampion = updatedTitles.some(t => t.currentHolderIds.includes(w.id));
     const targetRetireAge = w.retirementAge || (w.style === 'High Flyer' ? 40 : w.style === 'Hardcore' ? 41 : w.style === 'Powerhouse' ? 45 : 44);
@@ -1086,6 +1108,64 @@ export function advanceWeekEngine(
     ...(promotion.gmHistory || [])
   ] : (promotion.gmHistory || []);
 
+  // 10. Process Tournament Matches booked on Tonight's show
+  let updatedTournaments = [...(promotion.tournaments || [])];
+  let updatedCompletedTournaments = [...(promotion.completedTournaments || [])];
+
+  currentShowCard.forEach(seg => {
+    if (seg.tournamentId && seg.tournamentMatchId && seg.winnerId) {
+      const tourneyIdx = updatedTournaments.findIndex(t => t.id === seg.tournamentId);
+      if (tourneyIdx !== -1) {
+        const tourney = updatedTournaments[tourneyIdx];
+        const match = tourney.matches.find(m => m.id === seg.tournamentMatchId);
+        if (match && !match.completed) {
+          const evalSeg = showResult.segmentEvaluations.find(e => e.segment.id === seg.id);
+          const loserId = seg.participantIds.find(id => id !== seg.winnerId);
+          const stars = evalSeg?.starString || '★★★';
+          const score = evalSeg?.score || 75;
+          const finish = seg.finishType || 'Clean Pinfall';
+          const recap = evalSeg?.recap || `${seg.winnerId} picked up the tournament victory!`;
+
+          const resolvedTourney = resolveTournamentMatch(
+            tourney,
+            seg.tournamentMatchId,
+            seg.winnerId,
+            loserId,
+            false,
+            stars,
+            score,
+            finish,
+            recap,
+            currentWeek,
+            currentYear
+          );
+
+          if (resolvedTourney.status === 'completed') {
+            const result = applyTournamentCompletionEffects(
+              resolvedTourney,
+              {
+                ...promotion,
+                roster: remainingActiveRoster,
+                titles: updatedTitles,
+                tournaments: updatedTournaments,
+                completedTournaments: updatedCompletedTournaments
+              },
+              currentWeek,
+              currentYear
+            );
+            remainingActiveRoster = result.updatedPromotion.roster;
+            updatedTitles = result.updatedPromotion.titles;
+            updatedTournaments = result.updatedPromotion.tournaments || [];
+            updatedCompletedTournaments = result.updatedPromotion.completedTournaments || [];
+            newNews.push(result.newsItem);
+          } else {
+            updatedTournaments[tourneyIdx] = resolvedTourney;
+          }
+        }
+      }
+    }
+  });
+
   const updatedPromotion: Promotion = {
     ...promotion,
     budget: endingBalance,
@@ -1105,6 +1185,8 @@ export function advanceWeekEngine(
     creativePhilosophy: promotion.creativePhilosophy || 'Sports Entertainment Spectacle',
     hallOfFame: promotion.hallOfFame || [],
     retiredRoster: updatedRetiredRoster,
+    tournaments: updatedTournaments,
+    completedTournaments: updatedCompletedTournaments,
     currentGM: updatedGM,
     availableGMs: promotion.availableGMs,
     pendingGMProposal: undefined,

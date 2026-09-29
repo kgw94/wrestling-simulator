@@ -124,6 +124,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
   const [durationMinutes, setDurationMinutes] = useState<number>(12);
   const [titleId, setTitleId] = useState<string>('');
   const [feudId, setFeudId] = useState<string>('');
+  const [tournamentId, setTournamentId] = useState<string>('');
+  const [tournamentMatchId, setTournamentMatchId] = useState<string>('');
   const [segmentNotes, setSegmentNotes] = useState<string>('');
   const [rosterFilter, setRosterFilter] = useState<'all' | 'unbooked' | 'men' | 'women'>('all');
 
@@ -190,6 +192,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
     setDurationMinutes(seg.durationMinutes || 12);
     setTitleId(seg.titleId || '');
     setFeudId(seg.feudId || '');
+    setTournamentId(seg.tournamentId || '');
+    setTournamentMatchId(seg.tournamentMatchId || '');
     setSegmentNotes(seg.notes || '');
     setRosterFilter('all');
     setIsAddingSegment(true);
@@ -202,6 +206,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
     setWinnerId('');
     setTitleId('');
     setFeudId('');
+    setTournamentId('');
+    setTournamentMatchId('');
     setCustomMatchRuleId('');
     setSegmentNotes('');
   };
@@ -239,6 +245,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
           durationMinutes,
           titleId: titleId ? titleId : undefined,
           feudId: feudId ? feudId : undefined,
+          tournamentId: category === 'Match' && tournamentId ? tournamentId : undefined,
+          tournamentMatchId: category === 'Match' && tournamentMatchId ? tournamentMatchId : undefined,
           notes: segmentNotes.trim() ? segmentNotes.trim() : undefined
         };
       });
@@ -258,6 +266,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
         durationMinutes,
         titleId: titleId ? titleId : undefined,
         feudId: feudId ? feudId : undefined,
+        tournamentId: category === 'Match' && tournamentId ? tournamentId : undefined,
+        tournamentMatchId: category === 'Match' && tournamentMatchId ? tournamentMatchId : undefined,
         notes: segmentNotes.trim() ? segmentNotes.trim() : undefined
       };
       onUpdateCard([...currentCard, newSegment]);
@@ -633,6 +643,11 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                           <Flame className="w-3 h-3" /> Feud ({feud.heat})
                         </span>
                       )}
+                      {seg.tournamentId && (
+                        <span className="text-[11px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono flex items-center gap-1 border border-amber-500/40 font-bold">
+                          <Trophy className="w-3 h-3 text-amber-400" /> Tournament Match
+                        </span>
+                      )}
                     </div>
 
                     {/* Participants & Match Details */}
@@ -841,6 +856,62 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                           <div className="text-[10px] text-zinc-400 truncate">{rule.dangerLevel} • +{rule.spectacleBonus} pts</div>
                         </button>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tournament Match Linker */}
+                {promotion.tournaments && promotion.tournaments.filter(t => t.status === 'active').length > 0 && (
+                  <div className="pt-2 border-t border-zinc-800/80">
+                    <label className="text-[11px] font-mono text-amber-400 font-bold block mb-1 flex items-center gap-1.5">
+                      <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Link to Active Tournament Match:</span>
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+                      {promotion.tournaments
+                        .filter(t => t.status === 'active')
+                        .flatMap(t =>
+                          t.matches
+                            .filter(m => !m.completed && m.wrestler1Id && m.wrestler2Id)
+                            .map(m => {
+                              const w1 = promotion.roster.find(w => w.id === m.wrestler1Id);
+                              const w2 = promotion.roster.find(w => w.id === m.wrestler2Id);
+                              const isSelected = tournamentMatchId === m.id;
+                              return (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      setTournamentId('');
+                                      setTournamentMatchId('');
+                                    } else {
+                                      setTournamentId(t.id);
+                                      setTournamentMatchId(m.id);
+                                      if (w1 && w2) {
+                                        setSelectedParticipants([w1.id, w2.id]);
+                                        setWinnerId(w1.id);
+                                        setSegmentNotes(`${t.name}: ${m.roundName}`);
+                                      }
+                                    }
+                                  }}
+                                  className={`p-2 rounded border text-left transition flex items-center justify-between ${
+                                    isSelected
+                                      ? 'bg-amber-500/25 border-amber-400 text-amber-300 font-bold'
+                                      : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="truncate font-bold text-white">{t.name}</div>
+                                    <div className="text-[10px] text-zinc-400 truncate">
+                                      {m.roundName}: {w1?.name} vs {w2?.name}
+                                    </div>
+                                  </div>
+                                  {isSelected && <Check className="w-4 h-4 text-amber-400 flex-shrink-0" />}
+                                </button>
+                              );
+                            })
+                        )}
                     </div>
                   </div>
                 )}

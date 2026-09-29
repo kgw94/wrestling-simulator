@@ -352,6 +352,32 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           </button>
         )}
 
+        {/* Feature: Tournaments & Championship Cups */}
+        <button
+          type="button"
+          onClick={() => onNavigate('tournaments')}
+          className="group text-left p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/80 hover:bg-zinc-900/90 transition shadow-sm flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="px-2.5 py-1 rounded bg-amber-500/20 text-amber-400 font-mono text-xs font-bold border border-amber-500/40 group-hover:bg-amber-500 group-hover:text-black transition">
+                [ O ]
+              </span>
+              <Trophy className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 transition" />
+            </div>
+            <h3 className="font-bold text-white text-base font-mono group-hover:text-amber-300 transition">
+              Tournaments & Championship Cups
+            </h3>
+            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
+              Commission single-elimination brackets (King of the Ring) and round-robin block competitions (Grand Prix Climax). Advance brackets on TV and crown champions.
+            </p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-amber-400">
+            <span>{(promotion.tournaments || []).length} Active Cups • {(promotion.completedTournaments || []).length} Trophies</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+          </div>
+        </button>
+
         {/* Feature 1: PPV & Supercards Calendar */}
         <button
           type="button"

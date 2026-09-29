@@ -32,7 +32,9 @@ import {
   CheckCircle2,
   Calendar,
   Star,
-  HardDrive
+  HardDrive,
+  Zap,
+  Play
 } from 'lucide-react';
 
 interface SandboxCustomizerViewProps {
@@ -85,11 +87,27 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
     maxParticipants: 4,
     dangerLevel: 'Dangerous',
     workrateMultiplier: 1.15,
-    spectacleBonus: 10,
+    spectacleBonus: 12,
     injuryRiskBonus: 10,
     isElimination: false,
-    isTitleEligible: true
+    isTitleEligible: true,
+    enclosure: 'Standard Ring',
+    winCondition: 'Pinfall & Submission',
+    hazardLevel: 'Extreme Weapons',
+    fallsCountAnywhere: false,
+    timeLimitMinutes: 0
   });
+
+  // Match test simulator state
+  const [testW1Id, setTestW1Id] = useState<string>(promoForm.roster[0]?.id || '');
+  const [testW2Id, setTestW2Id] = useState<string>(promoForm.roster[1]?.id || '');
+  const [testSimResult, setTestSimResult] = useState<{
+    score: number;
+    stars: string;
+    injuryRiskPct: number;
+    spectacleBonus: number;
+    breakdownNotes: string[];
+  } | null>(null);
 
   const showNotification = (msg: string) => {
     setSaveMessage(msg);
@@ -186,6 +204,7 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
   const handleOpenCreateRule = () => {
     setIsCreatingRule(true);
     setEditingRule(null);
+    setTestSimResult(null);
     setRuleForm({
       id: `match-rule-${Date.now()}`,
       name: 'Custom Gimmick Match',
@@ -194,16 +213,70 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
       maxParticipants: 4,
       dangerLevel: 'Dangerous',
       workrateMultiplier: 1.15,
-      spectacleBonus: 10,
-      injuryRiskBonus: 8,
+      spectacleBonus: 12,
+      injuryRiskBonus: 10,
       isElimination: false,
-      isTitleEligible: true
+      isTitleEligible: true,
+      enclosure: 'Standard Ring',
+      winCondition: 'Pinfall & Submission',
+      hazardLevel: 'Extreme Weapons',
+      fallsCountAnywhere: false,
+      timeLimitMinutes: 0
+    });
+  };
+
+  const handleLoadBlueprint = (blueprint: CustomMatchRule) => {
+    setRuleForm({
+      ...blueprint,
+      id: `match-rule-${Date.now()}`,
+      name: `${blueprint.name} (Custom)`
+    });
+    setTestSimResult(null);
+    showNotification(`Loaded "${blueprint.name}" blueprint into editor.`);
+  };
+
+  const handleRunTestSimulation = () => {
+    const w1 = promoForm.roster.find(w => w.id === testW1Id);
+    const w2 = promoForm.roster.find(w => w.id === testW2Id);
+    if (!w1 || !w2) return;
+
+    const avgWorkrate = (w1.workrate + w2.workrate) / 2;
+    const avgOverness = (w1.overness + w2.overness) / 2;
+    const multBonus = Math.round((ruleForm.workrateMultiplier - 1.0) * avgWorkrate * 0.4);
+    const baseScore = Math.round((avgWorkrate * 0.55) + (avgOverness * 0.45));
+    const finalScore = Math.min(100, Math.max(40, baseScore + multBonus + ruleForm.spectacleBonus + (ruleForm.enclosure && ruleForm.enclosure !== 'Standard Ring' ? 2 : 0)));
+
+    let stars = '★★★';
+    if (finalScore >= 95) stars = '★★★★★ Classic';
+    else if (finalScore >= 90) stars = '★★★★3/4 Showstealer';
+    else if (finalScore >= 85) stars = '★★★★1/2 Masterpiece';
+    else if (finalScore >= 80) stars = '★★★★ Excellent';
+    else if (finalScore >= 75) stars = '★★★1/2 Great';
+    else if (finalScore >= 70) stars = '★★★ Good';
+    else stars = '★★1/2 Solid';
+
+    const baseChance = (ruleForm.dangerLevel === 'Extremely Brutal' ? 12 : ruleForm.dangerLevel === 'Dangerous' ? 8 : 4) + ruleForm.injuryRiskBonus;
+
+    setTestSimResult({
+      score: finalScore,
+      stars,
+      injuryRiskPct: Math.min(40, baseChance),
+      spectacleBonus: ruleForm.spectacleBonus + multBonus,
+      breakdownNotes: [
+        `Workrate bonus: +${multBonus} pts (${ruleForm.workrateMultiplier}x multiplier applied to ${Math.round(avgWorkrate)} avg workrate)`,
+        `Spectacle excitement: +${ruleForm.spectacleBonus} pts crowd buzz`,
+        ruleForm.enclosure && ruleForm.enclosure !== 'Standard Ring' ? `Enclosure: Contested inside ${ruleForm.enclosure} (+2 spectacle)` : '',
+        ruleForm.winCondition ? `Win Objective: ${ruleForm.winCondition}` : '',
+        ruleForm.hazardLevel ? `Hazard Severity: ${ruleForm.hazardLevel}` : '',
+        ruleForm.fallsCountAnywhere ? 'Falls Count Anywhere: Pinfalls valid outside the ring' : ''
+      ].filter(Boolean)
     });
   };
 
   const handleOpenEditRule = (rule: CustomMatchRule) => {
     setEditingRule(rule);
     setIsCreatingRule(false);
+    setTestSimResult(null);
     setRuleForm({ ...rule });
   };
 
@@ -825,21 +898,47 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
 
           {/* Create / Edit Rule Drawer */}
           {(isCreatingRule || editingRule) && (
-            <div className="bg-zinc-950 border-2 border-amber-500 rounded-xl p-4 shadow-xl space-y-4">
-              <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-                <h4 className="font-bold text-white text-xs font-mono">
-                  {isCreatingRule ? 'Create New Match Stipulation' : `Edit Rule: ${editingRule?.name}`}
-                </h4>
+            <div className="bg-zinc-950 border-2 border-amber-500 rounded-xl p-5 shadow-xl space-y-5">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <div>
+                  <h4 className="font-bold text-white text-sm font-mono flex items-center gap-2">
+                    <Swords className="w-4 h-4 text-amber-400" />
+                    <span>{isCreatingRule ? 'Specialty Match Construction Workshop' : `Edit Match Stipulation: ${editingRule?.name}`}</span>
+                  </h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Customize physical ring enclosures, unique victory conditions, weapon hazard tiers, and risk-reward modifiers.
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
                     setIsCreatingRule(false);
                     setEditingRule(null);
+                    setTestSimResult(null);
                   }}
                   className="p-1 rounded text-zinc-400 hover:text-white"
                 >
                   <X className="w-4 h-4" />
                 </button>
+              </div>
+
+              {/* Blueprints Quick Loader */}
+              <div>
+                <label className="block text-[11px] font-mono text-zinc-400 uppercase font-bold mb-1.5">
+                  Load Blueprint Template
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {DEFAULT_CUSTOM_MATCH_RULES.map(blueprint => (
+                    <button
+                      key={blueprint.id}
+                      type="button"
+                      onClick={() => handleLoadBlueprint(blueprint)}
+                      className="px-2.5 py-1 rounded bg-zinc-900 border border-zinc-800 hover:border-amber-500/60 text-zinc-300 hover:text-white text-xs font-mono transition"
+                    >
+                      {blueprint.name}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs font-mono">
@@ -850,8 +949,56 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
                     value={ruleForm.name}
                     onChange={e => setRuleForm({ ...ruleForm, name: e.target.value })}
                     className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
-                    placeholder="e.g. Barbed Wire Deathmatch"
+                    placeholder="e.g. Exploding Barbed Wire Deathmatch"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1">Ring Structure / Enclosure</label>
+                  <select
+                    value={ruleForm.enclosure || 'Standard Ring'}
+                    onChange={e => setRuleForm({ ...ruleForm, enclosure: e.target.value as any })}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
+                  >
+                    <option value="Standard Ring">Standard Ring (Ropes & Canvas)</option>
+                    <option value="Steel Cage">15ft Steel Cage</option>
+                    <option value="Hell in a Cell">Hell in a Cell (Enclosed Roof Structure)</option>
+                    <option value="Double Ring Cage">Double Ring Cage (WarGames Roofed Enclosure)</option>
+                    <option value="Barbed Wire">Barbed Wire Ropes</option>
+                    <option value="Empty Arena">Empty Arena / Backstage Brawl</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1">Victory Condition</label>
+                  <select
+                    value={ruleForm.winCondition || 'Pinfall & Submission'}
+                    onChange={e => setRuleForm({ ...ruleForm, winCondition: e.target.value as any })}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
+                  >
+                    <option value="Pinfall & Submission">Pinfall & Submission</option>
+                    <option value="Over The Top Rope">Over The Top Rope Elimination</option>
+                    <option value="Last Man Standing">Last Man Standing (10-Count KO)</option>
+                    <option value="Escape The Cage">Escape The Cage / Door</option>
+                    <option value="Object / Ladder Retrieval">Object / Belt Retrieval (Ladder / Pole)</option>
+                    <option value="Buried / Casket">Buried Alive / Casket Encasement</option>
+                    <option value="Iron Man (Most Falls)">Iron Man (Most Falls in Time Limit)</option>
+                    <option value="Knockout / Stoppage">Referee Knockout / Stoppage Only</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1">Weapon Hazard Severity</label>
+                  <select
+                    value={ruleForm.hazardLevel || 'Standard Ringside'}
+                    onChange={e => setRuleForm({ ...ruleForm, hazardLevel: e.target.value as any })}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
+                  >
+                    <option value="Pure Athletic">Pure Athletic (Strict Rules, No Foreign Objects)</option>
+                    <option value="Standard Ringside">Standard Ringside (Chairs, Ring Bells, Kendo Sticks)</option>
+                    <option value="Extreme Weapons">Extreme Weapons (Tables, Ladders, Thumbtacks)</option>
+                    <option value="Lethal Explosives & Fire">Lethal Explosives & Fire (Exploding Boards, Barbed Wire)</option>
+                  </select>
                 </div>
 
                 <div>
@@ -869,12 +1016,12 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-zinc-400 mb-1">Workrate Multiplier (0.8 - 1.5x)</label>
+                  <label className="block text-zinc-400 mb-1">Workrate Multiplier (0.8 - 1.6x)</label>
                   <input
                     type="number"
                     step="0.05"
                     min="0.8"
-                    max="1.5"
+                    max="1.6"
                     value={ruleForm.workrateMultiplier}
                     onChange={e => setRuleForm({ ...ruleForm, workrateMultiplier: parseFloat(e.target.value) || 1.0 })}
                     className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
@@ -894,18 +1041,41 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-zinc-400 mb-1">Injury Risk Bonus (%)</label>
+                  <label className="block text-zinc-400 mb-1">Injury Hazard Risk (%)</label>
                   <input
                     type="number"
                     min="0"
-                    max="30"
+                    max="35"
                     value={ruleForm.injuryRiskBonus}
                     onChange={e => setRuleForm({ ...ruleForm, injuryRiskBonus: parseInt(e.target.value) || 0 })}
                     className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
                   />
                 </div>
 
-                <div className="flex items-center gap-4 pt-4">
+                <div>
+                  <label className="block text-zinc-400 mb-1">Time Limit (Mins, 0 = None)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="120"
+                    step="5"
+                    value={ruleForm.timeLimitMinutes || 0}
+                    onChange={e => setRuleForm({ ...ruleForm, timeLimitMinutes: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
+                  />
+                </div>
+
+                <div className="flex items-center gap-4 pt-2 sm:col-span-3">
+                  <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={ruleForm.fallsCountAnywhere || false}
+                      onChange={e => setRuleForm({ ...ruleForm, fallsCountAnywhere: e.target.checked })}
+                      className="rounded text-amber-500"
+                    />
+                    <span>Falls Count Anywhere</span>
+                  </label>
+
                   <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
                     <input
                       type="checkbox"
@@ -923,12 +1093,12 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
                       onChange={e => setRuleForm({ ...ruleForm, isTitleEligible: e.target.checked })}
                       className="rounded text-amber-500"
                     />
-                    <span>Title Eligible</span>
+                    <span>Championship Sanctioned</span>
                   </label>
                 </div>
 
                 <div className="sm:col-span-3">
-                  <label className="block text-zinc-400 mb-1">Description / Ring Psychology</label>
+                  <label className="block text-zinc-400 mb-1">Match Lore & Ring Psychology</label>
                   <input
                     type="text"
                     value={ruleForm.description}
@@ -939,12 +1109,88 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
                 </div>
               </div>
 
+              {/* Live Test Match Simulation Sandbox */}
+              <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-3">
+                <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                  <h5 className="font-mono text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Live Stipulation Test Simulator</span>
+                  </h5>
+                  <span className="text-[10px] text-zinc-400 font-mono">
+                    Test projected match rating & injury risk before saving
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3 text-xs font-mono">
+                  <div className="flex-1 w-full">
+                    <label className="block text-zinc-400 mb-1">Competitor 1</label>
+                    <select
+                      value={testW1Id}
+                      onChange={e => setTestW1Id(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
+                    >
+                      {promoForm.roster.map(w => (
+                        <option key={w.id} value={w.id}>{w.name} ({w.overness} OVR / {w.workrate} WR)</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <span className="text-zinc-500 font-bold sm:pt-4">VS</span>
+
+                  <div className="flex-1 w-full">
+                    <label className="block text-zinc-400 mb-1">Competitor 2</label>
+                    <select
+                      value={testW2Id}
+                      onChange={e => setTestW2Id(e.target.value)}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-white"
+                    >
+                      {promoForm.roster.map(w => (
+                        <option key={w.id} value={w.id}>{w.name} ({w.overness} OVR / {w.workrate} WR)</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleRunTestSimulation}
+                    className="w-full sm:w-auto px-4 py-2 mt-0 sm:mt-4 rounded bg-amber-500 hover:bg-amber-400 text-black font-bold flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>Run Test Sim</span>
+                  </button>
+                </div>
+
+                {testSimResult && (
+                  <div className="p-3 rounded-lg bg-zinc-950 border border-amber-500/40 space-y-2 mt-2 font-mono text-xs animate-fade-in">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-amber-300">{testSimResult.stars}</span>
+                        <span className="text-xs text-zinc-400">({testSimResult.score}/100 Rating)</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-emerald-400 font-bold">+{testSimResult.spectacleBonus} Pts Spectacle Boost</span>
+                        <span className="text-rose-400 font-bold">⚠️ {testSimResult.injuryRiskPct}% Injury Probability</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-[11px] text-zinc-400">
+                      {testSimResult.breakdownNotes.map((note, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                          <span>{note}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800">
                 <button
                   type="button"
                   onClick={() => {
                     setIsCreatingRule(false);
                     setEditingRule(null);
+                    setTestSimResult(null);
                   }}
                   className="px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono hover:bg-zinc-700"
                 >
@@ -953,10 +1199,10 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
                 <button
                   type="button"
                   onClick={handleSaveRule}
-                  className="px-4 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-black text-xs font-mono font-bold flex items-center gap-1.5"
+                  className="px-4 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-black text-xs font-mono font-bold flex items-center gap-1.5 shadow"
                 >
                   <Check className="w-4 h-4" />
-                  <span>Save Stipulation</span>
+                  <span>Save Stipulation Rule</span>
                 </button>
               </div>
             </div>
@@ -1009,11 +1255,35 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
                   <p className="text-[11px] text-zinc-400 font-sans line-clamp-2 mt-1">
                     {rule.description}
                   </p>
+
+                  {/* Stipulation Tags */}
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {rule.enclosure && rule.enclosure !== 'Standard Ring' && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-sky-300 font-mono">
+                        🏟️ {rule.enclosure}
+                      </span>
+                    )}
+                    {rule.winCondition && rule.winCondition !== 'Pinfall & Submission' && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-amber-300 font-mono">
+                        🎯 {rule.winCondition}
+                      </span>
+                    )}
+                    {rule.hazardLevel && rule.hazardLevel !== 'Standard Ringside' && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-rose-300 font-mono">
+                        🔥 {rule.hazardLevel}
+                      </span>
+                    )}
+                    {rule.fallsCountAnywhere && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-700 text-emerald-300 font-mono">
+                        📍 Falls Count Anywhere
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400">
                   <span className="text-amber-400 font-bold">+{rule.spectacleBonus} Spectacle</span>
-                  <span>{rule.workrateMultiplier}x Workrate</span>
+                  <span>{rule.workrateMultiplier}x Workrate • <strong className="text-rose-400">+{rule.injuryRiskBonus}% Risk</strong></span>
                 </div>
               </div>
             ))}

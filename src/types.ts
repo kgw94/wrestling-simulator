@@ -120,6 +120,11 @@ export interface CustomMatchRule {
   injuryRiskBonus: number; // 0 - 25%
   isElimination?: boolean;
   isTitleEligible: boolean;
+  enclosure?: 'Standard Ring' | 'Steel Cage' | 'Hell in a Cell' | 'Double Ring Cage' | 'Barbed Wire' | 'Empty Arena';
+  winCondition?: 'Pinfall & Submission' | 'Over The Top Rope' | 'Last Man Standing' | 'Escape The Cage' | 'Object / Ladder Retrieval' | 'Buried / Casket' | 'Iron Man (Most Falls)' | 'Knockout / Stoppage';
+  hazardLevel?: 'Pure Athletic' | 'Standard Ringside' | 'Extreme Weapons' | 'Lethal Explosives & Fire';
+  fallsCountAnywhere?: boolean;
+  timeLimitMinutes?: number;
 }
 
 export interface TagTeam {
@@ -195,6 +200,8 @@ export interface Segment {
   gmRecommendedWinner?: string;
   gmTag?: string;
   genderWarning?: string;
+  tournamentId?: string;
+  tournamentMatchId?: string;
 }
 
 export interface SegmentEvaluation {
@@ -429,6 +436,69 @@ export interface Promotion {
     wasApprovedAsIs: boolean;
     headline: string;
   }[];
+  tournaments?: Tournament[];
+  completedTournaments?: Tournament[];
+}
+
+export type TournamentType = 'single_elimination' | 'round_robin';
+export type TournamentStatus = 'active' | 'completed';
+export type TournamentRewardType = 'title_shot' | 'crown_title' | 'prestige_trophy';
+
+export interface TournamentMatch {
+  id: string;
+  round: number; // 1, 2, 3, etc.
+  roundName: string; // "Quarter-Finals", "Semi-Finals", "Finals", "Block A - Round 1", etc.
+  matchIndex: number;
+  block?: 'A' | 'B';
+  wrestler1Id?: string;
+  wrestler2Id?: string;
+  winnerId?: string;
+  loserId?: string;
+  isDraw?: boolean;
+  completed: boolean;
+  completedWeek?: number;
+  completedYear?: number;
+  ratingStars?: string;
+  ratingScore?: number;
+  finishType?: FinishType;
+  recap?: string;
+  nextMatchId?: string; // ID of the match the winner advances to (for bracket)
+  nextMatchSlot?: 1 | 2; // Slot in the next match
+}
+
+export interface RoundRobinStanding {
+  wrestlerId: string;
+  block: 'A' | 'B';
+  matchesPlayed: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  points: number; // Win = 2, Draw = 1, Loss = 0
+}
+
+export interface Tournament {
+  id: string;
+  name: string;
+  tagline: string;
+  type: TournamentType;
+  gender: 'Male' | 'Female' | 'Open';
+  bracketSize: 8 | 16;
+  status: TournamentStatus;
+  rewardType: TournamentRewardType;
+  rewardTitleId?: string;
+  targetPPVId?: string;
+  participantIds: string[];
+  matches: TournamentMatch[];
+  standings?: RoundRobinStanding[];
+  winnerId?: string;
+  runnerUpId?: string;
+  createdWeek: number;
+  createdYear: number;
+  completedWeek?: number;
+  completedYear?: number;
+  trophyName: string;
+  trophyIcon: string;
+  historyNotes?: string;
 }
 
 export type GMArchetype = 
@@ -616,6 +686,7 @@ export type GameView =
   | 'gimmick_lab'
   | 'tag_factions'
   | 'locker_room'
+  | 'tournaments'
   | 'sandbox_customizer'
   | 'writers_hub'
   | 'hall_of_fame'

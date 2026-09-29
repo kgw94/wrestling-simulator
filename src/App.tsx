@@ -40,6 +40,7 @@ import { SandboxCustomizerView } from './components/SandboxCustomizerView';
 import { WritersHubView } from './components/WritersHubView';
 import { HallOfFameView } from './components/HallOfFameView';
 import { GMOfficeView } from './components/GMOfficeView';
+import { TournamentsView } from './components/TournamentsView';
 import { SaveGameModal } from './components/SaveGameModal';
 import { getDefaultGMForPromotion, DEFAULT_AVAILABLE_GMS } from './engine/gmEngine';
 import { ThemeSettings } from './types';
@@ -167,6 +168,12 @@ export default function App() {
           if (!parsed.promotion.availableGMs || parsed.promotion.availableGMs.length === 0) {
             parsed.promotion.availableGMs = DEFAULT_AVAILABLE_GMS;
           }
+          if (!parsed.promotion.tournaments) {
+            parsed.promotion.tournaments = [];
+          }
+          if (!parsed.promotion.completedTournaments) {
+            parsed.promotion.completedTournaments = [];
+          }
           return parsed;
         }
       }
@@ -188,6 +195,8 @@ export default function App() {
       creativePhilosophy: 'Sports Entertainment Spectacle' as const,
       hallOfFame: DEFAULT_HALL_OF_FAME_INDUCTEES,
       retiredRoster: DEFAULT_RETIRED_WRESTLERS,
+      tournaments: [],
+      completedTournaments: [],
       themeSettings: DEFAULT_THEME_SETTINGS,
       currentGM: getDefaultGMForPromotion(PRESET_PROMOTIONS[0].style),
       availableGMs: DEFAULT_AVAILABLE_GMS
@@ -411,6 +420,8 @@ export default function App() {
         setGameState(prev => ({ ...prev, currentView: 'tag_factions' }));
       } else if (e.key === 'l' || e.key === 'L') {
         setGameState(prev => ({ ...prev, currentView: 'locker_room' }));
+      } else if (e.key === 'o' || e.key === 'O') {
+        setGameState(prev => ({ ...prev, currentView: 'tournaments' }));
       } else if (e.key === 's' || e.key === 'S') {
         setGameState(prev => ({ ...prev, currentView: 'settings' }));
       } else if (e.key === 'w' || e.key === 'W') {
@@ -614,6 +625,25 @@ export default function App() {
               <span className="hidden lg:inline">Locker Room</span>
               {(gameState.promotion.activeIncidents || []).filter(i => !i.resolved).length > 0 && (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setGameState(prev => ({ ...prev, currentView: 'tournaments' }))}
+              className={`px-2.5 py-1.5 rounded transition flex items-center gap-1 font-bold ${
+                gameState.currentView === 'tournaments'
+                  ? 'bg-amber-400 text-black shadow'
+                  : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+              }`}
+              title="Tournaments & Championship Cups [O]"
+            >
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden lg:inline">Tournaments</span>
+              {(gameState.promotion.tournaments || []).length > 0 && (
+                <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                  {(gameState.promotion.tournaments || []).length}
+                </span>
               )}
             </button>
 
@@ -860,6 +890,35 @@ export default function App() {
               }))
             }
             onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
+          />
+        )}
+
+        {gameState.currentView === 'tournaments' && (
+          <TournamentsView
+            promotion={gameState.promotion}
+            currentWeek={gameState.currentWeek}
+            currentYear={gameState.currentYear}
+            currentShowCard={gameState.currentShowCard}
+            onUpdatePromotion={newPromo =>
+              setGameState(prev => ({
+                ...prev,
+                promotion: newPromo
+              }))
+            }
+            onUpdateShowCard={newCard =>
+              setGameState(prev => ({
+                ...prev,
+                currentShowCard: newCard
+              }))
+            }
+            onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
+            onAddNewsItem={news =>
+              setGameState(prev => ({
+                ...prev,
+                newsArchive: [news, ...prev.newsArchive]
+              }))
+            }
+            onNavigateToBookShow={() => setGameState(prev => ({ ...prev, currentView: 'book_show' }))}
           />
         )}
 
