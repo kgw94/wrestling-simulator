@@ -349,6 +349,8 @@ export const TournamentsView: React.FC<TournamentsViewProps> = ({
       category: 'Match',
       matchType: 'Singles',
       participantIds: [w1.id, w2.id],
+      winnerId: w1.overness >= w2.overness ? w1.id : w2.id,
+      finishType: 'Clean Pinfall',
       durationMinutes: 15,
       notes: `${tournament.name}: ${match.roundName}`,
       tournamentId: tournament.id,

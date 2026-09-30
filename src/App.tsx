@@ -41,7 +41,10 @@ import { WritersHubView } from './components/WritersHubView';
 import { HallOfFameView } from './components/HallOfFameView';
 import { GMOfficeView } from './components/GMOfficeView';
 import { TournamentsView } from './components/TournamentsView';
+import { DevelopmentalView } from './components/DevelopmentalView';
+import { BrandSplitView } from './components/BrandSplitView';
 import { SaveGameModal } from './components/SaveGameModal';
+import { getDefaultDevelopmentalTerritory, getDefaultBrandSplit } from './data/developmentalAndBrandDefaults';
 import { getDefaultGMForPromotion, DEFAULT_AVAILABLE_GMS } from './engine/gmEngine';
 import { ThemeSettings } from './types';
 import { DEFAULT_THEME_SETTINGS, getResolvedTheme } from './data/themes';
@@ -64,7 +67,9 @@ import {
   Palette,
   Settings,
   Briefcase,
-  HardDrive
+  HardDrive,
+  GraduationCap,
+  Split
 } from 'lucide-react';
 
 const STORAGE_KEY = 'ewr_wrestling_simulator_state_v1';
@@ -174,6 +179,12 @@ export default function App() {
           if (!parsed.promotion.completedTournaments) {
             parsed.promotion.completedTournaments = [];
           }
+          if (!parsed.promotion.developmentalTerritory) {
+            parsed.promotion.developmentalTerritory = getDefaultDevelopmentalTerritory(parsed.promotion);
+          }
+          if (!parsed.promotion.brandSplit) {
+            parsed.promotion.brandSplit = getDefaultBrandSplit(parsed.promotion);
+          }
           return parsed;
         }
       }
@@ -197,6 +208,8 @@ export default function App() {
       retiredRoster: DEFAULT_RETIRED_WRESTLERS,
       tournaments: [],
       completedTournaments: [],
+      developmentalTerritory: getDefaultDevelopmentalTerritory(PRESET_PROMOTIONS[0]),
+      brandSplit: getDefaultBrandSplit(PRESET_PROMOTIONS[0]),
       themeSettings: DEFAULT_THEME_SETTINGS,
       currentGM: getDefaultGMForPromotion(PRESET_PROMOTIONS[0].style),
       availableGMs: DEFAULT_AVAILABLE_GMS
@@ -267,6 +280,8 @@ export default function App() {
       creativePhilosophy: selectedPromotion.creativePhilosophy || 'Sports Entertainment Spectacle',
       hallOfFame: selectedPromotion.hallOfFame || DEFAULT_HALL_OF_FAME_INDUCTEES,
       retiredRoster: selectedPromotion.retiredRoster || DEFAULT_RETIRED_WRESTLERS,
+      developmentalTerritory: selectedPromotion.developmentalTerritory || getDefaultDevelopmentalTerritory(selectedPromotion),
+      brandSplit: selectedPromotion.brandSplit || getDefaultBrandSplit(selectedPromotion),
       themeSettings: activeTheme,
       currentGM: selectedPromotion.currentGM || getDefaultGMForPromotion(selectedPromotion.style),
       availableGMs: selectedPromotion.availableGMs || DEFAULT_AVAILABLE_GMS
@@ -649,6 +664,44 @@ export default function App() {
 
             <button
               type="button"
+              onClick={() => setGameState(prev => ({ ...prev, currentView: 'developmental' }))}
+              className={`px-2.5 py-1.5 rounded transition flex items-center gap-1 font-bold ${
+                gameState.currentView === 'developmental'
+                  ? 'bg-amber-500 text-black shadow'
+                  : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+              }`}
+              title="Developmental Territory & Training Dojo [D]"
+            >
+              <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden lg:inline">Dojo</span>
+              {(gameState.promotion.developmentalTerritory?.traineeIds || []).length > 0 && (
+                <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                  {(gameState.promotion.developmentalTerritory?.traineeIds || []).length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setGameState(prev => ({ ...prev, currentView: 'brand_split' }))}
+              className={`px-2.5 py-1.5 rounded transition flex items-center gap-1 font-bold ${
+                gameState.currentView === 'brand_split'
+                  ? 'bg-sky-500 text-black shadow'
+                  : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+              }`}
+              title="Dual Brand Split & Draft Lottery [B]"
+            >
+              <Split className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden lg:inline">Brands</span>
+              {gameState.promotion.brandSplit?.isEnabled && (
+                <span className="px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                  ON
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setGameState(prev => ({ ...prev, currentView: 'settings' }))}
               className={`px-2.5 py-1.5 rounded transition flex items-center gap-1 font-bold ${
                 gameState.currentView === 'settings' || gameState.currentView === 'sandbox_customizer'
@@ -1018,6 +1071,36 @@ export default function App() {
                 newsArchive: [news, ...prev.newsArchive]
               }))
             }
+          />
+        )}
+
+        {gameState.currentView === 'developmental' && (
+          <DevelopmentalView
+            promotion={gameState.promotion}
+            currentWeek={gameState.currentWeek}
+            currentYear={gameState.currentYear}
+            onUpdatePromotion={newPromo =>
+              setGameState(prev => ({
+                ...prev,
+                promotion: newPromo
+              }))
+            }
+            onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
+          />
+        )}
+
+        {gameState.currentView === 'brand_split' && (
+          <BrandSplitView
+            promotion={gameState.promotion}
+            currentWeek={gameState.currentWeek}
+            currentYear={gameState.currentYear}
+            onUpdatePromotion={newPromo =>
+              setGameState(prev => ({
+                ...prev,
+                promotion: newPromo
+              }))
+            }
+            onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
           />
         )}
 

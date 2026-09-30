@@ -67,6 +67,19 @@ export interface Wrestler {
   peakOverness?: number;
   hallOfFameInducted?: boolean;
   hallOfFameYear?: number;
+  // Developmental Territory & Excursion tracking
+  isDevelopmental?: boolean;
+  developmentalWeeks?: number;
+  excursion?: {
+    destination: ExcursionDestination;
+    weeksRemaining: number;
+    totalWeeks: number;
+    targetSkill: 'workrate' | 'micSkills' | 'stamina' | 'overness';
+    departureWeek: number;
+    departureYear: number;
+  };
+  // Brand Split & Roster Assignment
+  brandId?: string; // 'brand_red' | 'brand_blue' | 'unassigned'
 }
 
 export type MatchType = 
@@ -314,6 +327,7 @@ export interface Championship {
   plateStyle?: BeltPlateStyle;
   description?: string;
   minWorkrateBonus?: number; // 0-10 bonus pts for high stakes
+  brandId?: string; // exclusive to a brand ('brand_red', 'brand_blue') or undefined for dual-branded
   history: ChampionshipHistoryEntry[];
 }
 
@@ -438,6 +452,107 @@ export interface Promotion {
   }[];
   tournaments?: Tournament[];
   completedTournaments?: Tournament[];
+  developmentalTerritory?: DevelopmentalTerritory;
+  brandSplit?: BrandSplitSettings;
+}
+
+export type DevelopmentalFocus = 
+  | 'balanced' 
+  | 'workrate_drills' 
+  | 'promo_classes' 
+  | 'stamina_conditioning' 
+  | 'character_refinement';
+
+export type ExcursionDestination = 
+  | 'Japan (Strong Style Dojo)' 
+  | 'Mexico (CMLL/AAA Lucha Libre)' 
+  | 'UK / Europe (Technical Catch)' 
+  | 'US Hardcore Underground';
+
+export interface DevelopmentalExcursion {
+  id: string;
+  wrestlerId: string;
+  wrestlerName: string;
+  destination: ExcursionDestination;
+  weeksRemaining: number;
+  totalWeeks: number;
+  targetSkill: 'workrate' | 'micSkills' | 'stamina' | 'overness';
+  departureWeek: number;
+  departureYear: number;
+  projectedBonus: string;
+}
+
+export interface DevelopmentalHistoryLog {
+  id: string;
+  week: number;
+  year: number;
+  wrestlerName: string;
+  type: 'call_up' | 'demote' | 'excursion_depart' | 'excursion_return' | 'scout';
+  headline: string;
+  details: string;
+}
+
+export interface DevelopmentalTerritory {
+  id: string;
+  name: string;
+  shortName: string;
+  brandColor: string;
+  location: string;
+  headCoachId?: string; // id of coach (can be a veteran wrestler or retired legend)
+  headCoachName?: string;
+  headCoachPerk?: string;
+  focusArea: DevelopmentalFocus;
+  weeklyBudgetCost: number;
+  reputation: number; // 0-100
+  traineeIds: string[]; // roster IDs stationed in developmental
+  excursions: DevelopmentalExcursion[];
+  graduatesCount: number;
+  historyLogs: DevelopmentalHistoryLog[];
+}
+
+export interface Brand {
+  id: string; // e.g. 'brand_red', 'brand_blue'
+  name: string; // e.g. 'Monday Night Raw', 'Friday Night SmackDown'
+  shortName: string; // e.g. 'RAW', 'SD'
+  color: string; // accent color name or hex
+  badgeClass: string;
+  borderClass: string;
+  weeklyShowName: string;
+  tvNetwork: string;
+  generalManagerId?: string;
+  generalManagerName?: string;
+  exclusiveTitleIds: string[];
+  rosterIds: string[];
+  averageRating: number;
+  ratingsHistory: number[];
+  weeklyShowWins: number;
+}
+
+export interface DraftPick {
+  id: string;
+  round: number;
+  pickNumber: number;
+  brandId: string;
+  brandName: string;
+  wrestlerId: string;
+  wrestlerName: string;
+  overallRating: number;
+  isChampion: boolean;
+  notes?: string;
+}
+
+export interface BrandSplitSettings {
+  isEnabled: boolean;
+  brands: Brand[];
+  activeBrandDraftLottery?: {
+    currentRound: number;
+    totalRounds: number;
+    currentTurnBrandIndex: number;
+    draftOrderBrandIds: string[];
+    isCompleted: boolean;
+  };
+  draftHistory: DraftPick[];
+  supremacyLeaderBrandId?: string;
 }
 
 export type TournamentType = 'single_elimination' | 'round_robin';
@@ -691,6 +806,8 @@ export type GameView =
   | 'writers_hub'
   | 'hall_of_fame'
   | 'gm_office'
+  | 'developmental'
+  | 'brand_split'
   | 'settings';
 
 export interface GameState {

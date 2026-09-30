@@ -10,7 +10,9 @@ import {
   Difficulty,
   PPVEvent,
   LockerRoomIncident,
-  StorylineArc
+  StorylineArc,
+  Tournament,
+  TournamentMatch
 } from '../types';
 import { 
   DEFAULT_PPV_CALENDAR, 
@@ -20,7 +22,11 @@ import {
 } from '../data/customDefaults';
 import { generateGMPostShowDebrief, generateGMProposal } from './gmEngine';
 import { validateMatchTitleGender, isWrestlerEligibleForTitle } from '../utils/titleUtils';
-import { resolveTournamentMatch, applyTournamentCompletionEffects } from './tournamentEngine';
+import { 
+  resolveTournamentMatch, 
+  applyTournamentCompletionEffects,
+  simulateTournamentMatchOutcome 
+} from './tournamentEngine';
 
 export function calculateStarRating(score: number): { stars: number; starString: string } {
   if (score >= 95) return { stars: 5.0, starString: '5.00 Stars ★★★★★' };
@@ -532,6 +538,28 @@ export function advanceWeekEngine(
     seg.participantIds.forEach(id => bookedWrestlerIds.add(id));
   });
 
+  // 0. Ensure all match segments have a decisive winner if left unpicked by the booker
+  currentShowCard.forEach(seg => {
+    if (seg.category === 'Match' && (!seg.winnerId || seg.winnerId.trim() === '') && seg.participantIds.length >= 2) {
+      const p1 = updatedRoster.find(w => w.id === seg.participantIds[0]);
+      const p2 = updatedRoster.find(w => w.id === seg.participantIds[1]);
+      if (p1 && p2) {
+        const outcome = simulateTournamentMatchOutcome(p1, p2, seg.notes || 'Tournament / Match Encounter');
+        seg.winnerId = outcome.winnerId;
+        if (!seg.finishType) seg.finishType = outcome.finishType;
+      } else {
+        seg.winnerId = seg.participantIds[0];
+      }
+
+      // Also ensure the corresponding evaluation in showResult reflects the winner
+      const evalMatch = showResult.segmentEvaluations.find(e => e.segment.id === seg.id);
+      if (evalMatch) {
+        evalMatch.segment.winnerId = seg.winnerId;
+        if (!evalMatch.segment.finishType) evalMatch.segment.finishType = seg.finishType;
+      }
+    }
+  });
+
   // 1. Process Segment Outcomes for Booked Wrestlers
   showResult.segmentEvaluations.forEach(ev => {
     const { segment, score } = ev;
@@ -848,8 +876,9 @@ export function advanceWeekEngine(
   const arenaCost = Math.round(safeAttendance * 6);
   const medicalCost = updatedRoster.filter(w => w.injury?.injured).length * 4500;
 
+  const devCost = promotion.developmentalTerritory ? (promotion.developmentalTerritory.weeklyBudgetCost || 8500) : 0;
   const totalRevenue = tvRevenue + ticketSales + merchSales + ppvSales;
-  const totalExpenses = totalPayroll + productionCost + arenaCost + medicalCost;
+  const totalExpenses = totalPayroll + productionCost + arenaCost + medicalCost + devCost;
   const netProfit = totalRevenue - totalExpenses;
   const endingBalance = currentBudget + netProfit;
 
@@ -1109,62 +1138,320 @@ export function advanceWeekEngine(
   ] : (promotion.gmHistory || []);
 
   // 10. Process Tournament Matches booked on Tonight's show
+  // Automatically detects if any matches in showResult / currentShowCard belong to an active tournament,
+  // and updates that tournament's bracket state, advancement, standings, and completed match history accordingly.
   let updatedTournaments = [...(promotion.tournaments || [])];
   let updatedCompletedTournaments = [...(promotion.completedTournaments || [])];
+  const processedTournamentMatchIds = new Set<string>();
 
   currentShowCard.forEach(seg => {
-    if (seg.tournamentId && seg.tournamentMatchId && seg.winnerId) {
-      const tourneyIdx = updatedTournaments.findIndex(t => t.id === seg.tournamentId);
+    if (seg.category !== 'Match') return;
+
+    let tourney: Tournament | undefined;
+    let targetMatch: TournamentMatch | undefined;
+    let tourneyIdx = -1;
+
+    // 1. Explicit link via tournamentId and tournamentMatchId
+    if (seg.tournamentId) {
+      tourneyIdx = updatedTournaments.findIndex(t => t.id === seg.tournamentId);
       if (tourneyIdx !== -1) {
-        const tourney = updatedTournaments[tourneyIdx];
-        const match = tourney.matches.find(m => m.id === seg.tournamentMatchId);
-        if (match && !match.completed) {
-          const evalSeg = showResult.segmentEvaluations.find(e => e.segment.id === seg.id);
-          const loserId = seg.participantIds.find(id => id !== seg.winnerId);
-          const stars = evalSeg?.starString || '★★★';
-          const score = evalSeg?.score || 75;
-          const finish = seg.finishType || 'Clean Pinfall';
-          const recap = evalSeg?.recap || `${seg.winnerId} picked up the tournament victory!`;
-
-          const resolvedTourney = resolveTournamentMatch(
-            tourney,
-            seg.tournamentMatchId,
-            seg.winnerId,
-            loserId,
-            false,
-            stars,
-            score,
-            finish,
-            recap,
-            currentWeek,
-            currentYear
+        tourney = updatedTournaments[tourneyIdx];
+        if (seg.tournamentMatchId) {
+          targetMatch = tourney.matches.find(m => m.id === seg.tournamentMatchId && !m.completed);
+        }
+        if (!targetMatch && seg.participantIds.length >= 2) {
+          targetMatch = tourney.matches.find(m => 
+            !m.completed && 
+            m.wrestler1Id && 
+            m.wrestler2Id && 
+            seg.participantIds.includes(m.wrestler1Id) && 
+            seg.participantIds.includes(m.wrestler2Id)
           );
-
-          if (resolvedTourney.status === 'completed') {
-            const result = applyTournamentCompletionEffects(
-              resolvedTourney,
-              {
-                ...promotion,
-                roster: remainingActiveRoster,
-                titles: updatedTitles,
-                tournaments: updatedTournaments,
-                completedTournaments: updatedCompletedTournaments
-              },
-              currentWeek,
-              currentYear
-            );
-            remainingActiveRoster = result.updatedPromotion.roster;
-            updatedTitles = result.updatedPromotion.titles;
-            updatedTournaments = result.updatedPromotion.tournaments || [];
-            updatedCompletedTournaments = result.updatedPromotion.completedTournaments || [];
-            newNews.push(result.newsItem);
-          } else {
-            updatedTournaments[tourneyIdx] = resolvedTourney;
-          }
         }
       }
     }
+
+    // 2. Automatic detection across all active tournaments by participants
+    if (!targetMatch && seg.participantIds.length >= 2) {
+      for (let tIndex = 0; tIndex < updatedTournaments.length; tIndex++) {
+        const candidateTourney = updatedTournaments[tIndex];
+        if (candidateTourney.status === 'completed') continue;
+
+        const candidateMatch = candidateTourney.matches.find(m => 
+          !m.completed && 
+          m.wrestler1Id && 
+          m.wrestler2Id && 
+          seg.participantIds.includes(m.wrestler1Id) && 
+          seg.participantIds.includes(m.wrestler2Id)
+        );
+
+        if (candidateMatch) {
+          tourney = candidateTourney;
+          tourneyIdx = tIndex;
+          targetMatch = candidateMatch;
+          break;
+        }
+      }
+    }
+
+    // If match found and not already processed this broadcast
+    if (tourney && targetMatch && !targetMatch.completed && !processedTournamentMatchIds.has(targetMatch.id)) {
+      processedTournamentMatchIds.add(targetMatch.id);
+
+      const w1Id = targetMatch.wrestler1Id!;
+      const w2Id = targetMatch.wrestler2Id!;
+
+      let winnerId = seg.winnerId;
+      let loserId: string | undefined;
+      let isDraw = false;
+
+      if (winnerId && (winnerId === w1Id || winnerId === w2Id)) {
+        loserId = winnerId === w1Id ? w2Id : w1Id;
+      } else {
+        // Fallback: If booker left winner unpicked, simulate realistic outcome
+        const w1Obj = remainingActiveRoster.find(w => w.id === w1Id) || promotion.roster.find(w => w.id === w1Id);
+        const w2Obj = remainingActiveRoster.find(w => w.id === w2Id) || promotion.roster.find(w => w.id === w2Id);
+        if (w1Obj && w2Obj) {
+          const outcome = simulateTournamentMatchOutcome(w1Obj, w2Obj, targetMatch.roundName);
+          winnerId = outcome.winnerId;
+          loserId = outcome.loserId;
+          isDraw = outcome.isDraw;
+          if (!seg.finishType) seg.finishType = outcome.finishType;
+        } else {
+          winnerId = w1Id;
+          loserId = w2Id;
+        }
+        seg.winnerId = winnerId;
+      }
+
+      const evalSeg = showResult.segmentEvaluations.find(e => e.segment.id === seg.id);
+      const stars = evalSeg?.starString || '★★★';
+      const score = evalSeg?.score || 75;
+      const finish = seg.finishType || 'Clean Pinfall';
+
+      const winnerWrestler = remainingActiveRoster.find(w => w.id === winnerId);
+      const loserWrestler = remainingActiveRoster.find(w => w.id === loserId);
+      const winnerName = winnerWrestler ? winnerWrestler.name : 'The winner';
+      const loserName = loserWrestler ? loserWrestler.name : 'the challenger';
+
+      const recap = evalSeg?.recap || `${winnerName} defeated ${loserName} via ${finish} in a dramatic ${targetMatch.roundName} encounter to advance in the ${tourney.name}.`;
+
+      // Resolve match in the tournament (advances bracket, updates standings & unlocks finals)
+      const resolvedTourney = resolveTournamentMatch(
+        tourney,
+        targetMatch.id,
+        winnerId,
+        loserId,
+        isDraw,
+        stars,
+        score,
+        finish,
+        recap,
+        currentWeek,
+        currentYear
+      );
+
+      // Check if this victory completed the tournament!
+      if (resolvedTourney.status === 'completed') {
+        const result = applyTournamentCompletionEffects(
+          resolvedTourney,
+          {
+            ...promotion,
+            roster: remainingActiveRoster,
+            titles: updatedTitles,
+            tournaments: updatedTournaments,
+            completedTournaments: updatedCompletedTournaments
+          },
+          currentWeek,
+          currentYear
+        );
+        remainingActiveRoster = result.updatedPromotion.roster;
+        updatedTitles = result.updatedPromotion.titles;
+        updatedTournaments = result.updatedPromotion.tournaments || [];
+        updatedCompletedTournaments = result.updatedPromotion.completedTournaments || [];
+        newNews.push(result.newsItem);
+      } else {
+        // Tournament continues - update active list and publish advancement news
+        updatedTournaments[tourneyIdx] = resolvedTourney;
+
+        newNews.push({
+          id: `news-tourn-adv-${Date.now()}-${targetMatch.id}`,
+          week: currentWeek,
+          category: 'Promotion',
+          importance: 'Medium',
+          headline: `🏆 TOURNAMENT ADVANCEMENT: ${winnerName} advances in the ${tourney.name}!`,
+          details: `In a ${targetMatch.roundName} contest rated ${stars} on ${promotion.weeklyTVShow}, ${winnerName} defeated ${loserName} via ${finish} and advanced to the next stage of the ${tourney.name}.`
+        });
+      }
+    }
   });
+
+  // 11. Process Developmental Territory Progression & Learning Excursions
+  let updatedDevelopmental = promotion.developmentalTerritory;
+  if (updatedDevelopmental) {
+    const focus = updatedDevelopmental.focusArea || 'balanced';
+    const coachBonus = updatedDevelopmental.headCoachId ? 1 : 0;
+    const devLogs = [...(updatedDevelopmental.historyLogs || [])];
+    const devTraineeIds = [...updatedDevelopmental.traineeIds];
+    let devExcursions = [...updatedDevelopmental.excursions];
+
+    // A. Train active trainees weekly
+    remainingActiveRoster = remainingActiveRoster.map(w => {
+      if (devTraineeIds.includes(w.id)) {
+        let workrateGain = 0;
+        let micGain = 0;
+        let staminaGain = 0;
+        let overnessGain = 0;
+
+        if (focus === 'workrate_drills') {
+          workrateGain = Math.floor(Math.random() * 2) + 1 + coachBonus;
+          staminaGain = 1;
+        } else if (focus === 'promo_classes') {
+          micGain = Math.floor(Math.random() * 2) + 1 + coachBonus;
+          overnessGain = 1;
+        } else if (focus === 'stamina_conditioning') {
+          staminaGain = Math.floor(Math.random() * 2) + 2;
+          workrateGain = 1;
+        } else if (focus === 'character_refinement') {
+          overnessGain = Math.floor(Math.random() * 2) + 1;
+          micGain = 1;
+        } else {
+          // balanced
+          workrateGain = 1;
+          micGain = 1;
+          staminaGain = 1;
+        }
+
+        const newWorkrate = Math.min(100, w.workrate + workrateGain);
+        const newMic = Math.min(100, w.micSkills + micGain);
+        const newStamina = Math.min(100, w.stamina + staminaGain);
+        const newOverness = Math.min(100, w.overness + overnessGain);
+
+        // Scouting report alert if prospect crosses 72 workrate
+        if (newWorkrate >= 72 && w.workrate < 72 && Math.random() < 0.6) {
+          newNews.push({
+            id: `news-dev-ready-${Date.now()}-${w.id}`,
+            week: currentWeek,
+            category: 'Wrestler',
+            importance: 'Medium',
+            headline: `SCOUTING REPORT: ${w.name} Dominating at ${updatedDevelopmental?.name}`,
+            details: `Internal reports confirm ${w.name} (Workrate ${newWorkrate}, Age ${w.age}) has excelled in developmental training drills and is primed for an impactful main roster call-up!`
+          });
+        }
+
+        return {
+          ...w,
+          workrate: newWorkrate,
+          micSkills: newMic,
+          stamina: newStamina,
+          overness: newOverness,
+          fatigue: 0 // developmental talent doesn't suffer TV road fatigue
+        };
+      }
+      return w;
+    });
+
+    // B. Process ongoing excursions
+    const completedExcursions: string[] = [];
+    devExcursions = devExcursions.map(exc => {
+      const nextRemaining = exc.weeksRemaining - 1;
+      if (nextRemaining <= 0) {
+        completedExcursions.push(exc.id);
+        const bonusSkill = exc.targetSkill;
+        const bonusAmt = Math.round(exc.totalWeeks * 0.7);
+
+        remainingActiveRoster = remainingActiveRoster.map(w => {
+          if (w.id === exc.wrestlerId) {
+            return {
+              ...w,
+              excursion: undefined,
+              overness: Math.min(100, w.overness + 4),
+              [bonusSkill]: Math.min(100, ((w[bonusSkill] as number) || 50) + bonusAmt)
+            };
+          }
+          return w;
+        });
+
+        devTraineeIds.push(exc.wrestlerId);
+
+        devLogs.unshift({
+          id: `log-return-${Date.now()}-${exc.id}`,
+          week: currentWeek,
+          year: currentYear,
+          wrestlerName: exc.wrestlerName,
+          type: 'excursion_return',
+          headline: `EXCURSION COMPLETE: ${exc.wrestlerName} Returns from ${exc.destination}`,
+          details: `Completed ${exc.totalWeeks}-week international excursion. Rejoining developmental ranks with +${bonusAmt} ${bonusSkill} and enhanced in-ring psychology!`
+        });
+
+        newNews.push({
+          id: `news-exc-return-${Date.now()}-${exc.id}`,
+          week: currentWeek,
+          category: 'Industry',
+          importance: 'High',
+          headline: `INTERNATIONAL RETURN: ${exc.wrestlerName} Returns from ${exc.destination}!`,
+          details: `After ${exc.totalWeeks} rigorous weeks competing abroad in ${exc.destination}, ${exc.wrestlerName} has returned with devastating new ring psychology and a refined arsenal (+${bonusAmt} ${bonusSkill})!`
+        });
+      }
+      return { ...exc, weeksRemaining: Math.max(0, nextRemaining) };
+    }).filter(e => !completedExcursions.includes(e.id));
+
+    updatedDevelopmental = {
+      ...updatedDevelopmental,
+      traineeIds: devTraineeIds,
+      excursions: devExcursions,
+      historyLogs: devLogs
+    };
+  }
+
+  // 12. Process Dual Brand Split Weekly Ratings & Supremacy Battle
+  let updatedBrandSplit = promotion.brandSplit;
+  if (updatedBrandSplit?.isEnabled && updatedBrandSplit.brands.length >= 2) {
+    const b1 = updatedBrandSplit.brands[0];
+    const b2 = updatedBrandSplit.brands[1];
+
+    const b1Score = Math.min(100, Math.max(65, Math.round(showResult.overallScore + (Math.random() * 6 - 3))));
+    const b2Score = Math.min(100, Math.max(65, Math.round(showResult.overallScore + (Math.random() * 8 - 4))));
+
+    const b1Wins = b1Score >= b2Score;
+    const newB1WinsCount = (b1.weeklyShowWins || 0) + (b1Wins ? 1 : 0);
+    const newB2WinsCount = (b2.weeklyShowWins || 0) + (!b1Wins ? 1 : 0);
+
+    const updatedBrands = [
+      {
+        ...b1,
+        averageRating: Math.round(((b1.averageRating * 3) + b1Score) / 4),
+        ratingsHistory: [b1Score, ...(b1.ratingsHistory || []).slice(0, 7)],
+        weeklyShowWins: newB1WinsCount
+      },
+      {
+        ...b2,
+        averageRating: Math.round(((b2.averageRating * 3) + b2Score) / 4),
+        ratingsHistory: [b2Score, ...(b2.ratingsHistory || []).slice(0, 7)],
+        weeklyShowWins: newB2WinsCount
+      }
+    ];
+
+    const leaderId = newB1WinsCount >= newB2WinsCount ? b1.id : b2.id;
+    updatedBrandSplit = {
+      ...updatedBrandSplit,
+      brands: updatedBrands,
+      supremacyLeaderBrandId: leaderId
+    };
+
+    if (Math.random() < 0.4) {
+      const winnerBrand = b1Wins ? b1 : b2;
+      const loserBrand = b1Wins ? b2 : b1;
+      newNews.push({
+        id: `news-brand-war-${Date.now()}`,
+        week: currentWeek,
+        category: 'Promotion',
+        importance: 'Medium',
+        headline: `BRAND RATINGS WAR: ${winnerBrand.name} Tops ${loserBrand.name} This Week!`,
+        details: `${winnerBrand.name} drew higher prime-time demographic ratings over rival brand ${loserBrand.name}. The competition for brand supremacy remains white-hot!`
+      });
+    }
+  }
 
   const updatedPromotion: Promotion = {
     ...promotion,
@@ -1187,6 +1474,8 @@ export function advanceWeekEngine(
     retiredRoster: updatedRetiredRoster,
     tournaments: updatedTournaments,
     completedTournaments: updatedCompletedTournaments,
+    developmentalTerritory: updatedDevelopmental,
+    brandSplit: updatedBrandSplit,
     currentGM: updatedGM,
     availableGMs: promotion.availableGMs,
     pendingGMProposal: undefined,

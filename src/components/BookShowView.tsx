@@ -708,7 +708,7 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                           <Flame className="w-3 h-3" /> Feud ({feud.heat})
                         </span>
                       )}
-                      {seg.tournamentId && (
+                      {(seg.tournamentId || (promotion.tournaments || []).some(t => t.status !== 'completed' && t.matches.some(m => !m.completed && m.wrestler1Id && m.wrestler2Id && seg.participantIds.includes(m.wrestler1Id) && seg.participantIds.includes(m.wrestler2Id)))) && (
                         <span className="text-[11px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono flex items-center gap-1 border border-amber-500/40 font-bold">
                           <Trophy className="w-3 h-3 text-amber-400" /> Tournament Match
                         </span>

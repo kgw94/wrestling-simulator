@@ -17,7 +17,9 @@ import {
   Settings,
   Palette,
   Briefcase,
-  HardDrive
+  HardDrive,
+  GraduationCap,
+  Split
 } from 'lucide-react';
 import { formatNumber } from '../utils/format';
 import { getResolvedTheme } from '../data/themes';
@@ -589,6 +591,67 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             </button>
           );
         })()}
+
+        {/* Feature: Developmental Territory & Dojo */}
+        <button
+          type="button"
+          onClick={() => onNavigate('developmental')}
+          className="group text-left p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/80 hover:bg-zinc-900/90 transition shadow-sm flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="px-2.5 py-1 rounded bg-amber-500/20 text-amber-400 font-mono text-xs font-bold border border-amber-500/40 group-hover:bg-amber-500 group-hover:text-black transition">
+                [ D ]
+              </span>
+              <GraduationCap className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 transition" />
+            </div>
+            <h3 className="font-bold text-white text-base font-mono group-hover:text-amber-300 transition">
+              Developmental Dojo & Farm System
+            </h3>
+            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
+              Cultivate rookie prospects at the Performance Center, appoint legendary head coaches, dispatch talent on international learning excursions, and execute main roster call-ups.
+            </p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-amber-400">
+            <span>{promotion.developmentalTerritory?.traineeIds?.length || 0} Trainees • {promotion.developmentalTerritory?.excursions?.length || 0} Overseas</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+          </div>
+        </button>
+
+        {/* Feature: Dual Brand Split & Draft Lottery */}
+        <button
+          type="button"
+          onClick={() => onNavigate('brand_split')}
+          className="group text-left p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-sky-500/80 hover:bg-zinc-900/90 transition shadow-sm flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded bg-sky-500/20 text-sky-400 font-mono text-xs font-bold border border-sky-500/40 group-hover:bg-sky-500 group-hover:text-black transition">
+                  [ B ]
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                  promotion.brandSplit?.isEnabled
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                }`}>
+                  {promotion.brandSplit?.isEnabled ? 'SPLIT ACTIVE' : 'UNIFIED'}
+                </span>
+              </div>
+              <Split className="w-5 h-5 text-zinc-500 group-hover:text-sky-400 transition" />
+            </div>
+            <h3 className="font-bold text-white text-base font-mono group-hover:text-sky-300 transition">
+              Brand Split & Draft Lottery
+            </h3>
+            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
+              Divide into competing brands (Raw vs SmackDown). Conduct live multi-round draft lotteries, negotiate blockbuster trades, and compete in weekly TV ratings warfare.
+            </p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-sky-400">
+            <span>{promotion.brandSplit?.isEnabled ? '2 Competing Brands • Draft Board' : 'Activate Dual Brands'}</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+          </div>
+        </button>
 
         {/* Bonus Action: Industry News Wire */}
         <button
