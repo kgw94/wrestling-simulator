@@ -80,6 +80,29 @@ export interface Wrestler {
   };
   // Brand Split & Roster Assignment
   brandId?: string; // 'brand_red' | 'brand_blue' | 'unassigned'
+  // Farewell Tour tracking
+  farewellTour?: FarewellTour;
+  // Forbidden Door guest tracking
+  isGuestStar?: boolean;
+  guestHomePromotionId?: string;
+  guestHomePromotionName?: string;
+  guestWeeksRemaining?: number;
+}
+
+export interface FarewellTour {
+  isActive: boolean;
+  tourTitle: string; // e.g. "The Last Ride", "Passing the Torch Tour"
+  startedWeek: number;
+  startedYear: number;
+  weeksRemaining: number;
+  totalWeeks: number;
+  matchesBookedCount: number;
+  targetMatchesCount: number;
+  prestigeAccumulated: number;
+  torchPassedWrestlerId?: string; // Young star chosen to inherit momentum
+  torchPassedWrestlerName?: string;
+  farewellStipulation?: string; // 'Respect & Torch Passing', 'Career on the Line', 'Dream Match Showcase', 'Last Man Standing Climax'
+  isCulminated?: boolean;
 }
 
 export type MatchType = 
@@ -215,6 +238,11 @@ export interface Segment {
   genderWarning?: string;
   tournamentId?: string;
   tournamentMatchId?: string;
+  isFarewellMatch?: boolean;
+  farewellWrestlerId?: string;
+  isForbiddenDoorMatch?: boolean;
+  partnerPromotionId?: string;
+  partnerPromotionName?: string;
 }
 
 export interface SegmentEvaluation {
@@ -261,6 +289,8 @@ export interface ShowResult {
     reaction: 'ecstatic' | 'pleased' | 'neutral' | 'concerned' | 'critical';
     ratingScore: number;
   };
+  companyPrestigeEarned?: number;
+  farewellTourHighlights?: string[];
 }
 
 export type ChampionshipType = 
@@ -454,6 +484,90 @@ export interface Promotion {
   completedTournaments?: Tournament[];
   developmentalTerritory?: DevelopmentalTerritory;
   brandSplit?: BrandSplitSettings;
+  forbiddenDoor?: ForbiddenDoorState;
+}
+
+export type AllianceTier = 
+  | 'None' 
+  | 'Talent Exchange' 
+  | 'Strategic Alliance' 
+  | 'The Forbidden Door' 
+  | 'Hostile Rivalry / Invasion';
+
+export interface LoanedWrestlerRecord {
+  wrestlerId: string;
+  wrestlerName: string;
+  partnerId: string;
+  partnerName: string;
+  weeksRemaining: number;
+  totalWeeks: number;
+  targetFocus: 'workrate' | 'overness' | 'stamina' | 'micSkills';
+  startingWorkrate: number;
+  startingOverness: number;
+}
+
+export interface BorrowedWrestlerRecord {
+  wrestler: Wrestler;
+  partnerId: string;
+  partnerName: string;
+  weeksRemaining: number;
+  totalWeeks: number;
+  feePaid: number;
+}
+
+export interface ForbiddenDoorPartner {
+  id: string;
+  name: string;
+  shortName: string;
+  country: string;
+  region: 'North America' | 'Japan' | 'Mexico' | 'Europe' | 'Global Indie';
+  style: string;
+  prestige: number;
+  description: string;
+  logoEmoji: string;
+  themeColor: string;
+  tier: AllianceTier;
+  relationshipScore: number; // 0-100
+  weeklyDues: number;
+  coPromotedShowsCount: number;
+  roster: Wrestler[];
+  titles: Championship[];
+}
+
+export interface ForbiddenDoorSupercard {
+  id: string;
+  name: string;
+  partnerId: string;
+  partnerName: string;
+  scheduledWeek: number;
+  scheduledYear: number;
+  venue: string;
+  venueCapacity: number;
+  ticketPrice: number;
+  theme: string;
+  stipulationType: 
+    | 'Bragging Rights Interpromotional Cup' 
+    | 'Champion vs. Champion Unification' 
+    | 'Winner Take All Unified Supremacy' 
+    | 'Promotional Invasion Showdown';
+  isCompleted?: boolean;
+  ourScore?: number;
+  partnerScore?: number;
+  mvpName?: string;
+  attendance?: number;
+  grossRevenue?: number;
+  prestigeEarned?: number;
+  recap?: string;
+}
+
+export interface ForbiddenDoorState {
+  partners: ForbiddenDoorPartner[];
+  supercards: ForbiddenDoorSupercard[];
+  loanedRoster: LoanedWrestlerRecord[];
+  borrowedRoster: BorrowedWrestlerRecord[];
+  interpromotionalCupHolder?: string;
+  trophiesWon: number;
+  totalPrestigeGained: number;
 }
 
 export type DevelopmentalFocus = 
@@ -808,6 +922,7 @@ export type GameView =
   | 'gm_office'
   | 'developmental'
   | 'brand_split'
+  | 'forbidden_door'
   | 'settings';
 
 export interface GameState {

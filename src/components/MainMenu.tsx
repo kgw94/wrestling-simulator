@@ -19,7 +19,8 @@ import {
   Briefcase,
   HardDrive,
   GraduationCap,
-  Split
+  Split,
+  Globe
 } from 'lucide-react';
 import { formatNumber } from '../utils/format';
 import { getResolvedTheme } from '../data/themes';
@@ -649,6 +650,45 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           </div>
           <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-sky-400">
             <span>{promotion.brandSplit?.isEnabled ? '2 Competing Brands • Draft Board' : 'Activate Dual Brands'}</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+          </div>
+        </button>
+
+        {/* Feature: Forbidden Door Working Agreements & Cross-Promotional Shows */}
+        <button
+          type="button"
+          onClick={() => onNavigate('forbidden_door')}
+          className="group text-left p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-emerald-500/80 hover:bg-zinc-900/90 transition shadow-sm flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-400 font-mono text-xs font-bold border border-emerald-500/40 group-hover:bg-emerald-500 group-hover:text-black transition">
+                  [ F ]
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                  (promotion.forbiddenDoor?.partners?.filter(p => p.tier !== 'None').length || 0) > 0
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                }`}>
+                  {(promotion.forbiddenDoor?.partners?.filter(p => p.tier !== 'None').length || 0) > 0
+                    ? `${promotion.forbiddenDoor?.partners?.filter(p => p.tier !== 'None').length} ALLIANCE${(promotion.forbiddenDoor?.partners?.filter(p => p.tier !== 'None').length || 0) > 1 ? 'S' : ''}`
+                    : 'INDEPENDENT'}
+                </span>
+              </div>
+              <Globe className="w-5 h-5 text-zinc-500 group-hover:text-emerald-400 transition" />
+            </div>
+            <h3 className="font-bold text-white text-base font-mono group-hover:text-emerald-300 transition">
+              Forbidden Door & Alliances
+            </h3>
+            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
+              Sign working agreements with international partners (Lucha Libre, Strong Style, Catch). Loan stars on excursions, borrow global talent, and promote joint Supercards.
+            </p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-emerald-400">
+            <span>
+              {promotion.forbiddenDoor?.partners?.filter(p => p.tier !== 'None').length || 0} Partner{(promotion.forbiddenDoor?.partners?.filter(p => p.tier !== 'None').length || 0) === 1 ? '' : 's'} • {promotion.forbiddenDoor?.borrowedRoster?.length || 0} Guests • {promotion.forbiddenDoor?.loanedRoster?.length || 0} Abroad
+            </span>
             <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
           </div>
         </button>

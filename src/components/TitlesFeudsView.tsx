@@ -8,7 +8,8 @@ import {
   TitleDivision, 
   BeltStrapColor, 
   BeltPlateStyle, 
-  ChampionshipHistoryEntry 
+  ChampionshipHistoryEntry,
+  TagTeam 
 } from '../types';
 import { CHAMPIONSHIP_TEMPLATES } from '../data/customDefaults';
 import { MarkdownTableView } from './MarkdownTableView';
@@ -247,8 +248,8 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       // Status / Category filter
       if (titleFilter === 'active') return !t.isRetired;
       if (titleFilter === 'retired') return !!t.isRetired;
-      if (titleFilter === 'singles') return !t.isTagTeam && !t.isRetired;
-      if (titleFilter === 'tag') return !!t.isTagTeam && !t.isRetired;
+      if (titleFilter === 'singles') return !t.isTagTeam && t.type !== 'Tag Team' && t.division !== 'Tag Team' && !(t.name && /tag/i.test(t.name)) && !t.isRetired;
+      if (titleFilter === 'tag') return (!!t.isTagTeam || t.type === 'Tag Team' || t.division === 'Tag Team' || (t.name && /tag/i.test(t.name))) && !t.isRetired;
       if (titleFilter === 'womens') return t.division === 'Women' || t.type === 'Women\'s';
       return true;
     });
@@ -295,14 +296,16 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
     });
   };
 
-  const handleAwardTitle = (titleId: string, wrestlerIds: string[]) => {
+  const handleAwardTitle = (titleId: string, wrestlerIds: string[], teamName?: string) => {
     if (wrestlerIds.length === 0) return;
     const winners = wrestlerIds
       .map(id => promotion.roster.find(w => w.id === id))
       .filter(Boolean) as Wrestler[];
     if (winners.length === 0) return;
 
-    const winnerNames = winners.map(w => w.name).join(' & ');
+    const winnerNames = teamName
+      ? `${teamName} (${winners.map(w => w.name).join(' & ')})`
+      : winners.map(w => w.name).join(' & ');
 
     const updatedTitles = promotion.titles.map(t => {
       if (t.id === titleId) {
@@ -325,13 +328,16 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
           wonYear: currentYear,
           defenses: 0,
           eventWonAt: 'Awarded by Booker Decision',
-          notes: 'Awarded championship gold by executive order',
+          notes: teamName
+            ? `Awarded to tag team ${teamName} by executive order`
+            : 'Awarded championship gold by executive order',
           reignRating: '★★★★',
           isCurrent: true
         };
 
         return {
           ...t,
+          isTagTeam: t.isTagTeam || wrestlerIds.length >= 2,
           currentHolderIds: wrestlerIds,
           defenses: 0,
           history: [newReign, ...updatedHistory]
@@ -568,7 +574,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       division: title.division || (title.isTagTeam ? 'Tag Team' : 'Openweight'),
       gender: title.gender || getChampionshipGender(title),
       prestige: title.prestige,
-      isTagTeam: !!title.isTagTeam,
+      isTagTeam: !!title.isTagTeam || title.type === 'Tag Team' || title.division === 'Tag Team' || title.currentHolderIds.length >= 2 || Boolean(title.name && /tag/i.test(title.name)),
       strapColor: title.strapColor || 'Classic Black',
       plateStyle: title.plateStyle || 'Big Gold Classic',
       minWorkrateBonus: title.minWorkrateBonus || 0,
@@ -1222,7 +1228,19 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                           <div>
                             <div className="text-amber-300 font-bold text-sm truncate flex items-center gap-1.5">
                               <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                              <span className="truncate">{holders.map(h => h.name).join(' & ')}</span>
+                              <span className="truncate">
+                                {(() => {
+                                  if (holders.length >= 2) {
+                                    const team = (promotion.tagTeams || []).find(tt =>
+                                      tt.memberIds.length >= 2 && tt.memberIds.every(id => title.currentHolderIds.includes(id))
+                                    );
+                                    if (team) {
+                                      return `${team.name} (${holders.map(h => h.name).join(' & ')})`;
+                                    }
+                                  }
+                                  return holders.map(h => h.name).join(' & ');
+                                })()}
+                              </span>
                             </div>
                             <div className="flex items-center gap-2 text-[11px] text-zinc-400 mt-1">
                               <span>Overness: {Math.round(holders.reduce((a, b) => a + b.overness, 0) / holders.length)}</span>
@@ -1307,19 +1325,151 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                             Reactivate
                           </button>
                         ) : isVacant ? (
-                          <div className="w-36">
-                            <select
-                              onChange={e => {
-                                if (e.target.value) handleAwardTitle(title.id, [e.target.value]);
-                              }}
-                              defaultValue=""
-                              className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-white text-[11px] focus:outline-none"
-                            >
-                              <option value="" disabled>Award to...</option>
-                              {filterEligibleWrestlersForTitle(title, promotion.roster).map(w => (
-                                <option key={w.id} value={w.id}>{w.name} ({w.gender})</option>
-                              ))}
-                            </select>
+                          <div className={Boolean(title.isTagTeam || title.type === 'Tag Team' || title.division === 'Tag Team' || (title.name && /tag/i.test(title.name)) || (title.history && title.history.some(h => (h.holderIds && h.holderIds.length >= 2) || (h.holderNames && (h.holderNames.includes('&') || h.holderNames.includes(' and ')))))) ? "w-56 sm:w-64" : "w-36"}>
+                            {(() => {
+                              const isTagTitle = Boolean(
+                                title.isTagTeam || 
+                                title.type === 'Tag Team' || 
+                                title.division === 'Tag Team' || 
+                                (title.name && /(tag\s*team|tag\s*championship|world\s*tag|tag\s*belts|tag\s*titles|duo|twins|tandem|pairs)/i.test(title.name)) ||
+                                (title.history && title.history.some(h => (h.holderIds && h.holderIds.length >= 2) || (h.holderNames && (h.holderNames.includes('&') || h.holderNames.includes(' and ')))))
+                              );
+
+                              if (isTagTitle) {
+                                // All active tag teams with members on roster
+                                const activeTeams = (promotion.tagTeams || []).filter(tt => {
+                                  if (tt.isActive === false) return false;
+                                  const members = tt.memberIds
+                                    .map(id => promotion.roster.find(w => w.id === id))
+                                    .filter(Boolean) as Wrestler[];
+                                  return members.length >= 2;
+                                });
+
+                                const titleGender = getChampionshipGender(title);
+                                const genderMatchingTeams = activeTeams.filter(tt => {
+                                  if (titleGender === 'Open') return true;
+                                  const members = tt.memberIds
+                                    .map(id => promotion.roster.find(w => w.id === id))
+                                    .filter(Boolean) as Wrestler[];
+                                  return members.every(m => m.gender === titleGender);
+                                });
+                                const otherTeams = activeTeams.filter(tt => !genderMatchingTeams.includes(tt));
+
+                                // Fallback pairs if no registered tag teams exist yet
+                                const eligibleWrestlers = filterEligibleWrestlersForTitle(title, promotion.roster);
+                                const fallbackPairs: { w1: Wrestler; w2: Wrestler; name: string }[] = [];
+                                for (let i = 0; i < eligibleWrestlers.length - 1 && fallbackPairs.length < 5; i += 2) {
+                                  const w1 = eligibleWrestlers[i];
+                                  const w2 = eligibleWrestlers[i + 1];
+                                  fallbackPairs.push({
+                                    w1,
+                                    w2,
+                                    name: `${w1.name.split(' ')[0]} & ${w2.name.split(' ')[0]}`
+                                  });
+                                }
+
+                                return (
+                                  <select
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      if (!val) return;
+                                      if (val.startsWith('team:')) {
+                                        const teamId = val.replace('team:', '');
+                                        const team = (promotion.tagTeams || []).find(tt => tt.id === teamId);
+                                        if (team) {
+                                          handleAwardTitle(title.id, team.memberIds, team.name);
+                                        }
+                                      } else if (val.startsWith('pair:')) {
+                                        const [w1Id, w2Id] = val.replace('pair:', '').split(',');
+                                        const w1 = promotion.roster.find(w => w.id === w1Id);
+                                        const w2 = promotion.roster.find(w => w.id === w2Id);
+                                        if (w1 && w2) {
+                                          const teamName = `${w1.name.split(' ')[0]} & ${w2.name.split(' ')[0]}`;
+                                          const newTeam: TagTeam = {
+                                            id: `team-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                                            name: teamName,
+                                            memberIds: [w1.id, w2.id],
+                                            chemistry: 75,
+                                            wins: 0,
+                                            losses: 0,
+                                            isActive: true
+                                          };
+                                          const updatedTeams = [...(promotion.tagTeams || []), newTeam];
+                                          onUpdatePromotion({ ...promotion, tagTeams: updatedTeams });
+                                          handleAwardTitle(title.id, [w1.id, w2.id], teamName);
+                                        }
+                                      } else {
+                                        const team = (promotion.tagTeams || []).find(tt => tt.id === val);
+                                        if (team) {
+                                          handleAwardTitle(title.id, team.memberIds, team.name);
+                                        }
+                                      }
+                                      e.target.value = "";
+                                    }}
+                                    defaultValue=""
+                                    className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-white text-[11px] focus:outline-none focus:border-amber-500 font-mono truncate"
+                                    title="Award vacant tag championship to an existing tag team"
+                                  >
+                                    <option value="" disabled>Award to...</option>
+                                    {genderMatchingTeams.length > 0 && (
+                                      <optgroup label="Existing Tag Teams">
+                                        {genderMatchingTeams.map(team => {
+                                          const memberNames = team.memberIds
+                                            .map(id => promotion.roster.find(w => w.id === id)?.name || id)
+                                            .join(' & ');
+                                          return (
+                                            <option key={team.id} value={`team:${team.id}`}>
+                                              👥 {team.name} ({memberNames}){team.chemistry ? ` • ${team.chemistry}% Chem` : ''}
+                                            </option>
+                                          );
+                                        })}
+                                      </optgroup>
+                                    )}
+                                    {otherTeams.length > 0 && (
+                                      <optgroup label="Other Registered Teams">
+                                        {otherTeams.map(team => {
+                                          const memberNames = team.memberIds
+                                            .map(id => promotion.roster.find(w => w.id === id)?.name || id)
+                                            .join(' & ');
+                                          return (
+                                            <option key={team.id} value={`team:${team.id}`}>
+                                              👥 {team.name} ({memberNames})
+                                            </option>
+                                          );
+                                        })}
+                                      </optgroup>
+                                    )}
+                                    {activeTeams.length === 0 && fallbackPairs.length > 0 && (
+                                      <optgroup label="Quick Pair Roster Duos">
+                                        {fallbackPairs.map(p => (
+                                          <option key={`pair-${p.w1.id}-${p.w2.id}`} value={`pair:${p.w1.id},${p.w2.id}`}>
+                                            👥 {p.w1.name} & {p.w2.name}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    )}
+                                    {activeTeams.length === 0 && fallbackPairs.length === 0 && (
+                                      <option value="" disabled>No eligible tag teams available</option>
+                                    )}
+                                  </select>
+                                );
+                              }
+
+                              return (
+                                <select
+                                  onChange={e => {
+                                    if (e.target.value) handleAwardTitle(title.id, [e.target.value]);
+                                  }}
+                                  defaultValue=""
+                                  className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-white text-[11px] focus:outline-none focus:border-amber-500 font-mono truncate"
+                                >
+                                  <option value="" disabled>Award to...</option>
+                                  {filterEligibleWrestlersForTitle(title, promotion.roster).map(w => (
+                                    <option key={w.id} value={w.id}>{w.name} ({w.gender})</option>
+                                  ))}
+                                </select>
+                              );
+                            })()}
                           </div>
                         ) : null}
                       </div>
@@ -1968,6 +2118,44 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                 </label>
               </div>
 
+              {titleForm.isTagTeam && (
+                <div className="bg-zinc-900/90 p-2.5 rounded border border-zinc-700/80 space-y-1">
+                  <label className="block text-[11px] font-mono text-amber-400 font-bold">
+                    👥 Quick-Crown Existing Tag Team:
+                  </label>
+                  <select
+                    onChange={e => {
+                      const teamId = e.target.value;
+                      if (!teamId) return;
+                      const team = (promotion.tagTeams || []).find(tt => tt.id === teamId);
+                      if (team && team.memberIds.length >= 2) {
+                        setTitleForm({
+                          ...titleForm,
+                          initialHolderId: team.memberIds[0],
+                          initialHolder2Id: team.memberIds[1]
+                        });
+                      }
+                    }}
+                    defaultValue=""
+                    className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">-- Choose Existing Tag Team --</option>
+                    {(promotion.tagTeams || [])
+                      .filter(tt => tt.isActive !== false)
+                      .map(tt => {
+                        const memberNames = tt.memberIds
+                          .map(id => promotion.roster.find(w => w.id === id)?.name || id)
+                          .join(' & ');
+                        return (
+                          <option key={tt.id} value={tt.id}>
+                            👥 {tt.name} ({memberNames})
+                          </option>
+                        );
+                      })}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-zinc-400 mb-1">
@@ -2245,6 +2433,44 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                   <span className="text-zinc-400">Tag Team Format</span>
                 </label>
               </div>
+
+              {titleForm.isTagTeam && (
+                <div className="bg-zinc-900/90 p-2.5 rounded border border-zinc-700/80 space-y-1">
+                  <label className="block text-[11px] font-mono text-amber-400 font-bold">
+                    👥 Quick-Crown Existing Tag Team:
+                  </label>
+                  <select
+                    onChange={e => {
+                      const teamId = e.target.value;
+                      if (!teamId) return;
+                      const team = (promotion.tagTeams || []).find(tt => tt.id === teamId);
+                      if (team && team.memberIds.length >= 2) {
+                        setTitleForm({
+                          ...titleForm,
+                          initialHolderId: team.memberIds[0],
+                          initialHolder2Id: team.memberIds[1]
+                        });
+                      }
+                    }}
+                    defaultValue=""
+                    className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">-- Choose Existing Tag Team --</option>
+                    {(promotion.tagTeams || [])
+                      .filter(tt => tt.isActive !== false)
+                      .map(tt => {
+                        const memberNames = tt.memberIds
+                          .map(id => promotion.roster.find(w => w.id === id)?.name || id)
+                          .join(' & ');
+                        return (
+                          <option key={tt.id} value={tt.id}>
+                            👥 {tt.name} ({memberNames})
+                          </option>
+                        );
+                      })}
+                  </select>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

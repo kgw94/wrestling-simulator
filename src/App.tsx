@@ -43,8 +43,10 @@ import { GMOfficeView } from './components/GMOfficeView';
 import { TournamentsView } from './components/TournamentsView';
 import { DevelopmentalView } from './components/DevelopmentalView';
 import { BrandSplitView } from './components/BrandSplitView';
+import { ForbiddenDoorView } from './components/ForbiddenDoorView';
 import { SaveGameModal } from './components/SaveGameModal';
 import { getDefaultDevelopmentalTerritory, getDefaultBrandSplit } from './data/developmentalAndBrandDefaults';
+import { getDefaultForbiddenDoorState } from './data/forbiddenDoorDefaults';
 import { getDefaultGMForPromotion, DEFAULT_AVAILABLE_GMS } from './engine/gmEngine';
 import { ThemeSettings } from './types';
 import { DEFAULT_THEME_SETTINGS, getResolvedTheme } from './data/themes';
@@ -69,7 +71,8 @@ import {
   Briefcase,
   HardDrive,
   GraduationCap,
-  Split
+  Split,
+  Globe2
 } from 'lucide-react';
 
 const STORAGE_KEY = 'ewr_wrestling_simulator_state_v1';
@@ -131,8 +134,163 @@ export default function App() {
           if (!parsed.promotion.customMatchRules || parsed.promotion.customMatchRules.length === 0) {
             parsed.promotion.customMatchRules = DEFAULT_CUSTOM_MATCH_RULES;
           }
-          if (!parsed.promotion.tagTeams) {
-            parsed.promotion.tagTeams = [];
+          if (!parsed.promotion.tagTeams || parsed.promotion.tagTeams.length === 0) {
+            const r = parsed.promotion.roster || [];
+            const starterTeams: any[] = [];
+            const w5 = r.find((w: any) => w.id === 'apw-5');
+            const w6 = r.find((w: any) => w.id === 'apw-6');
+            if (w5 && w6) {
+              starterTeams.push({
+                id: 'team-apw-1',
+                name: 'The Iron Syndicate',
+                memberIds: ['apw-5', 'apw-6'],
+                chemistry: 88,
+                wins: 14,
+                losses: 3,
+                finisher: 'Doomsday Decapitation',
+                isActive: true
+              });
+            }
+            const w11 = r.find((w: any) => w.id === 'apw-11');
+            const w12 = r.find((w: any) => w.id === 'apw-12');
+            if (w11 && w12) {
+              starterTeams.push({
+                id: 'team-apw-2',
+                name: 'Aerial Dynasty',
+                memberIds: ['apw-11', 'apw-12'],
+                chemistry: 84,
+                wins: 11,
+                losses: 5,
+                finisher: 'Stereo 450 Splash',
+                isActive: true
+              });
+            }
+            const w9 = r.find((w: any) => w.id === 'apw-9');
+            const w10 = r.find((w: any) => w.id === 'apw-10');
+            if (w9 && w10) {
+              starterTeams.push({
+                id: 'team-apw-3',
+                name: 'Texas Roughnecks',
+                memberIds: ['apw-9', 'apw-10'],
+                chemistry: 78,
+                wins: 8,
+                losses: 6,
+                finisher: 'Spinebuster / Lariat Combo',
+                isActive: true
+              });
+            }
+
+            // VU teams
+            const vu9 = r.find((w: any) => w.id === 'vu-9');
+            const vu10 = r.find((w: any) => w.id === 'vu-10');
+            if (vu9 && vu10) {
+              starterTeams.push({
+                id: 'team-vu-1',
+                name: 'The Junkyard Heavyweights',
+                memberIds: ['vu-9', 'vu-10'],
+                chemistry: 82,
+                wins: 10,
+                losses: 4,
+                finisher: 'Concrete Demolition Drop',
+                isActive: true
+              });
+            }
+            const vu5 = r.find((w: any) => w.id === 'vu-5');
+            const vu11 = r.find((w: any) => w.id === 'vu-11');
+            if (vu5 && vu11) {
+              starterTeams.push({
+                id: 'team-vu-2',
+                name: 'Anarchy Thrillseekers',
+                memberIds: ['vu-5', 'vu-11'],
+                chemistry: 85,
+                wins: 9,
+                losses: 5,
+                finisher: 'Stereo Table Plancha',
+                isActive: true
+              });
+            }
+            const vu1 = r.find((w: any) => w.id === 'vu-1');
+            const vu2 = r.find((w: any) => w.id === 'vu-2');
+            if (vu1 && vu2) {
+              starterTeams.push({
+                id: 'team-vu-3',
+                name: 'The Deathmatch Disciples',
+                memberIds: ['vu-1', 'vu-2'],
+                chemistry: 90,
+                wins: 15,
+                losses: 2,
+                finisher: 'Double Barbed Wire Chokeslam',
+                isActive: true
+              });
+            }
+
+            // SSPW teams
+            const s6 = r.find((w: any) => w.id === 'sspw-6');
+            const s10 = r.find((w: any) => w.id === 'sspw-10');
+            if (s6 && s10) {
+              starterTeams.push({
+                id: 'team-sspw-1',
+                name: 'The Rising Sun Dragons',
+                memberIds: ['sspw-6', 'sspw-10'],
+                chemistry: 86,
+                wins: 12,
+                losses: 4,
+                finisher: 'Twin Dragon Lariat',
+                isActive: true
+              });
+            }
+            const s13 = r.find((w: any) => w.id === 'sspw-13');
+            const s14 = r.find((w: any) => w.id === 'sspw-14');
+            if (s13 && s14) {
+              starterTeams.push({
+                id: 'team-sspw-2',
+                name: 'The Dojo Brothers',
+                memberIds: ['sspw-13', 'sspw-14'],
+                chemistry: 80,
+                wins: 7,
+                losses: 8,
+                finisher: 'Double Boston Crab',
+                isActive: true
+              });
+            }
+            const s1 = r.find((w: any) => w.id === 'sspw-1');
+            const s4 = r.find((w: any) => w.id === 'sspw-4');
+            if (s1 && s4) {
+              starterTeams.push({
+                id: 'team-sspw-3',
+                name: 'Honor & Spirit',
+                memberIds: ['sspw-1', 'sspw-4'],
+                chemistry: 88,
+                wins: 14,
+                losses: 2,
+                finisher: 'Burning Crossface Combination',
+                isActive: true
+              });
+            }
+
+            // Fallback for custom promotions
+            if (starterTeams.length === 0 && r.length >= 4) {
+              starterTeams.push({
+                id: `team-init-1`,
+                name: `${r[0].name.split(' ')[0]} & ${r[1].name.split(' ')[0]}`,
+                memberIds: [r[0].id, r[1].id],
+                chemistry: 78,
+                wins: 5,
+                losses: 2,
+                isActive: true
+              });
+              starterTeams.push({
+                id: `team-init-2`,
+                name: `${r[2].name.split(' ')[0]} & ${r[3].name.split(' ')[0]}`,
+                memberIds: [r[2].id, r[3].id],
+                chemistry: 76,
+                wins: 4,
+                losses: 3,
+                isActive: true
+              });
+            }
+
+            parsed.promotion.tagTeams = starterTeams;
           }
           if (!parsed.promotion.factions) {
             parsed.promotion.factions = [];
@@ -185,6 +343,9 @@ export default function App() {
           if (!parsed.promotion.brandSplit) {
             parsed.promotion.brandSplit = getDefaultBrandSplit(parsed.promotion);
           }
+          if (!parsed.promotion.forbiddenDoor) {
+            parsed.promotion.forbiddenDoor = getDefaultForbiddenDoorState(parsed.promotion);
+          }
           return parsed;
         }
       }
@@ -212,7 +373,8 @@ export default function App() {
       brandSplit: getDefaultBrandSplit(PRESET_PROMOTIONS[0]),
       themeSettings: DEFAULT_THEME_SETTINGS,
       currentGM: getDefaultGMForPromotion(PRESET_PROMOTIONS[0].style),
-      availableGMs: DEFAULT_AVAILABLE_GMS
+      availableGMs: DEFAULT_AVAILABLE_GMS,
+      forbiddenDoor: getDefaultForbiddenDoorState(PRESET_PROMOTIONS[0])
     };
 
     return {
@@ -284,7 +446,8 @@ export default function App() {
       brandSplit: selectedPromotion.brandSplit || getDefaultBrandSplit(selectedPromotion),
       themeSettings: activeTheme,
       currentGM: selectedPromotion.currentGM || getDefaultGMForPromotion(selectedPromotion.style),
-      availableGMs: selectedPromotion.availableGMs || DEFAULT_AVAILABLE_GMS
+      availableGMs: selectedPromotion.availableGMs || DEFAULT_AVAILABLE_GMS,
+      forbiddenDoor: selectedPromotion.forbiddenDoor || getDefaultForbiddenDoorState(selectedPromotion)
     };
     const topFeud = promoWithDefaults.feuds.slice().sort((a, b) => b.heat - a.heat)[0];
     setGameState({
@@ -443,6 +606,10 @@ export default function App() {
         setGameState(prev => ({ ...prev, currentView: 'writers_hub' }));
       } else if (e.key === 'h' || e.key === 'H') {
         setGameState(prev => ({ ...prev, currentView: 'hall_of_fame' }));
+      } else if (e.key === 'f' || e.key === 'F') {
+        setGameState(prev => ({ ...prev, currentView: 'forbidden_door' }));
+      } else if (e.key === 'b' || e.key === 'B') {
+        setGameState(prev => ({ ...prev, currentView: 'brand_split' }));
       } else if (e.key === 'n' || e.key === 'N') {
         setGameState(prev => ({ ...prev, currentView: 'news' }));
       } else if (e.key === 'Escape') {
@@ -698,6 +865,20 @@ export default function App() {
                   ON
                 </span>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setGameState(prev => ({ ...prev, currentView: 'forbidden_door' }))}
+              className={`px-2.5 py-1.5 rounded transition flex items-center gap-1 font-bold ${
+                gameState.currentView === 'forbidden_door'
+                  ? 'bg-amber-500 text-black shadow'
+                  : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
+              }`}
+              title="The Forbidden Door: Working Agreements & Global Alliances [F]"
+            >
+              <Globe2 className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden lg:inline">Forbidden Door</span>
             </button>
 
             <button
@@ -1101,6 +1282,21 @@ export default function App() {
               }))
             }
             onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
+          />
+        )}
+
+        {gameState.currentView === 'forbidden_door' && (
+          <ForbiddenDoorView
+            promotion={gameState.promotion}
+            currentWeek={gameState.currentWeek}
+            currentYear={gameState.currentYear}
+            onUpdatePromotion={newPromo =>
+              setGameState(prev => ({
+                ...prev,
+                promotion: newPromo
+              }))
+            }
+            onNavigate={view => setGameState(prev => ({ ...prev, currentView: view }))}
           />
         )}
 

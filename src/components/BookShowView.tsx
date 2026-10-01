@@ -134,6 +134,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
   const [feudId, setFeudId] = useState<string>('');
   const [tournamentId, setTournamentId] = useState<string>('');
   const [tournamentMatchId, setTournamentMatchId] = useState<string>('');
+  const [isFarewellMatch, setIsFarewellMatch] = useState<boolean>(false);
+  const [farewellWrestlerId, setFarewellWrestlerId] = useState<string>('');
   const [segmentNotes, setSegmentNotes] = useState<string>('');
   const [rosterFilter, setRosterFilter] = useState<'all' | 'unbooked' | 'men' | 'women'>('all');
 
@@ -161,6 +163,11 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
     .map(id => promotion.roster.find(w => w.id === id))
     .filter((w): w is Wrestler => Boolean(w && otherSegmentParticipantIds.has(w.id)));
 
+  // Identify any selected participant on an active Farewell Tour
+  const activeFarewellParticipant = selectedParticipants
+    .map(id => promotion.roster.find(w => w.id === id))
+    .find(w => Boolean(w?.farewellTour && w.farewellTour.isActive));
+
   // Global show stats for the Roster Utilization Tracker
   const allCardParticipantIds = currentCard.flatMap(s => s.participantIds);
   const uniqueCardParticipantIds = new Set(allCardParticipantIds);
@@ -182,6 +189,10 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
     setDurationMinutes(12);
     setTitleId('');
     setFeudId('');
+    setTournamentId('');
+    setTournamentMatchId('');
+    setIsFarewellMatch(false);
+    setFarewellWrestlerId('');
     setSegmentNotes('');
     setRosterFilter('all');
     setIsAddingSegment(true);
@@ -202,6 +213,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
     setFeudId(seg.feudId || '');
     setTournamentId(seg.tournamentId || '');
     setTournamentMatchId(seg.tournamentMatchId || '');
+    setIsFarewellMatch(seg.isFarewellMatch || false);
+    setFarewellWrestlerId(seg.farewellWrestlerId || '');
     setSegmentNotes(seg.notes || '');
     setRosterFilter('all');
     setIsAddingSegment(true);
@@ -217,17 +230,32 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
     setTournamentId('');
     setTournamentMatchId('');
     setCustomMatchRuleId('');
+    setIsFarewellMatch(false);
+    setFarewellWrestlerId('');
     setSegmentNotes('');
   };
 
   // Helper to toggle participant selection
   const toggleParticipant = (id: string) => {
-    if (selectedParticipants.includes(id)) {
-      setSelectedParticipants(selectedParticipants.filter(p => p !== id));
-      if (winnerId === id) setWinnerId('');
+    const nextParticipants = selectedParticipants.includes(id)
+      ? selectedParticipants.filter(p => p !== id)
+      : [...selectedParticipants, id];
+    
+    setSelectedParticipants(nextParticipants);
+    if (!selectedParticipants.includes(id) && !winnerId) setWinnerId(id);
+    if (winnerId === id && selectedParticipants.includes(id)) setWinnerId('');
+
+    // Check if any chosen participant has an active Farewell Tour
+    const fW = nextParticipants
+      .map(pId => promotion.roster.find(w => w.id === pId))
+      .find(w => w?.farewellTour && w.farewellTour.isActive);
+
+    if (fW) {
+      setIsFarewellMatch(true);
+      setFarewellWrestlerId(fW.id);
     } else {
-      setSelectedParticipants([...selectedParticipants, id]);
-      if (!winnerId) setWinnerId(id);
+      setIsFarewellMatch(false);
+      setFarewellWrestlerId('');
     }
   };
 
@@ -255,6 +283,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
           feudId: feudId ? feudId : undefined,
           tournamentId: category === 'Match' && tournamentId ? tournamentId : undefined,
           tournamentMatchId: category === 'Match' && tournamentMatchId ? tournamentMatchId : undefined,
+          isFarewellMatch: category === 'Match' && isFarewellMatch,
+          farewellWrestlerId: category === 'Match' && isFarewellMatch && farewellWrestlerId ? farewellWrestlerId : undefined,
           notes: segmentNotes.trim() ? segmentNotes.trim() : undefined
         };
       });
@@ -276,6 +306,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
         feudId: feudId ? feudId : undefined,
         tournamentId: category === 'Match' && tournamentId ? tournamentId : undefined,
         tournamentMatchId: category === 'Match' && tournamentMatchId ? tournamentMatchId : undefined,
+        isFarewellMatch: category === 'Match' && isFarewellMatch,
+        farewellWrestlerId: category === 'Match' && isFarewellMatch && farewellWrestlerId ? farewellWrestlerId : undefined,
         notes: segmentNotes.trim() ? segmentNotes.trim() : undefined
       };
       onUpdateCard([...currentCard, newSegment]);
@@ -713,6 +745,18 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                           <Trophy className="w-3 h-3 text-amber-400" /> Tournament Match
                         </span>
                       )}
+                      {participants.some(p => (p.farewellTour && p.farewellTour.isActive) || seg.isFarewellMatch || seg.farewellWrestlerId === p.id) && (
+                        <span className="text-[11px] px-2 py-0.5 rounded bg-gradient-to-r from-amber-500/30 to-yellow-500/20 text-amber-300 font-mono flex items-center gap-1 border border-amber-500/50 font-bold shadow-sm">
+                          <Trophy className="w-3 h-3 text-amber-400" />
+                          <span>
+                            ⭐ FAREWELL TOUR
+                            {(() => {
+                              const fw = participants.find(p => (p.farewellTour && p.farewellTour.isActive) || seg.farewellWrestlerId === p.id);
+                              return fw?.farewellTour ? ` (${fw.name} • Match ${fw.farewellTour.matchesBookedCount + 1}/${fw.farewellTour.targetMatchesCount})` : '';
+                            })()}
+                          </span>
+                        </span>
+                      )}
                     </div>
 
                     {/* Participants & Match Details */}
@@ -1098,7 +1142,14 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-bold truncate">{w.name}</span>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-bold truncate">{w.name}</span>
+                            {w.farewellTour && w.farewellTour.isActive && (
+                              <span className="text-[9px] px-1 py-0.2 rounded font-bold bg-amber-500/30 text-amber-300 border border-amber-500/50 shrink-0">
+                                ⭐ Tour
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1">
                             <span className={`text-[9px] px-1 rounded font-bold ${
                               gimmickGrade === 'S' ? 'bg-amber-400 text-black' :
@@ -1228,6 +1279,50 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
                     ))}
                   </select>
                 </div>
+
+                {/* Official Farewell Tour Match Designation */}
+                {activeFarewellParticipant && activeFarewellParticipant.farewellTour && (
+                  <div className="col-span-1 md:col-span-2 p-3 rounded-xl bg-gradient-to-r from-amber-950/40 to-zinc-950 border border-amber-500/50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Trophy className="w-4 h-4 text-amber-400" />
+                        <span className="font-bold text-amber-300 uppercase tracking-wider">
+                          Official Farewell Tour Showcase Match
+                        </span>
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer bg-zinc-900 px-2.5 py-1 rounded-lg border border-amber-500/40 hover:border-amber-400 transition">
+                        <input
+                          type="checkbox"
+                          checked={isFarewellMatch}
+                          onChange={e => {
+                            setIsFarewellMatch(e.target.checked);
+                            setFarewellWrestlerId(e.target.checked ? activeFarewellParticipant.id : '');
+                          }}
+                          className="rounded accent-amber-500 w-4 h-4"
+                        />
+                        <span className="text-amber-200 font-bold text-[11px]">Sanction as Farewell Match</span>
+                      </label>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-zinc-300 pt-1 border-t border-zinc-800">
+                      <div>
+                        Legend: <strong className="text-white">{activeFarewellParticipant.name}</strong> • Tour: <strong className="text-amber-400">"{activeFarewellParticipant.farewellTour.tourTitle}"</strong>
+                      </div>
+                      <div className="text-amber-300 font-bold">
+                        Match #{activeFarewellParticipant.farewellTour.matchesBookedCount + 1} of {activeFarewellParticipant.farewellTour.targetMatchesCount}
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-400 font-sans">
+                      ⭐ Contesting this match boosts <strong className="text-amber-300">{promotion.name}'s Company Prestige</strong> (+1 to +2 pts; +2 for 4+ star classic).
+                      {activeFarewellParticipant.farewellTour.torchPassedWrestlerId && selectedParticipants.includes(activeFarewellParticipant.farewellTour.torchPassedWrestlerId) && (
+                        <span className="text-sky-300 font-bold block mt-0.5">
+                          🔥 Passing the Torch Active: Generational clash with protege {activeFarewellParticipant.farewellTour.torchPassedWrestlerName}! (+4 Overness & Morale boost)
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

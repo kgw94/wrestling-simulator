@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Wrestler, Promotion, PushLevel, Alignment, GameView, NewsItem } from '../types';
+import { Wrestler, Promotion, PushLevel, Alignment, GameView, NewsItem, FarewellTour } from '../types';
 import { MarkdownTableView } from './MarkdownTableView';
 import { WrestlerCareerModal } from './WrestlerCareerModal';
+import { FarewellTourModal } from './FarewellTourModal';
 import { calculateHallOfFameScorecard } from '../data/customDefaults';
 import { 
   Users, 

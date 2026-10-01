@@ -253,6 +253,35 @@ export function evaluateSegment(
       notes.push(`Tournament Stakes (+4 pts): High tournament tournament advancement implications elevated crowd tension.`);
     }
 
+    // Farewell Tour special showcase bonus
+    const isFarewell = segment.isFarewellMatch || participants.some(p => (p.farewellTour && p.farewellTour.isActive) || p.id === segment.farewellWrestlerId);
+    if (isFarewell) {
+      const farewellWrestler = participants.find(p => (p.farewellTour && p.farewellTour.isActive) || p.id === segment.farewellWrestlerId);
+      if (farewellWrestler) {
+        score += 6;
+        const tourName = farewellWrestler.farewellTour?.tourTitle || 'Official Farewell Tour';
+        notes.push(`⭐ Farewell Tour Showcase (+6 pts): Electrifying crowd reverence for living legend ${farewellWrestler.name} on "${tourName}".`);
+
+        if (farewellWrestler.farewellTour?.torchPassedWrestlerId && 
+            participants.some(p => p.id === farewellWrestler.farewellTour?.torchPassedWrestlerId)) {
+          score += 3;
+          notes.push(`🔥 Generational Torch Clash (+3 pts): Generational battle against designated protege ${farewellWrestler.farewellTour.torchPassedWrestlerName || 'successor'}!`);
+        }
+      }
+    }
+
+    // Forbidden Door & Cross-Promotional Dream Match Bonus
+    const isForbiddenDoor = segment.isForbiddenDoorMatch || participants.some(p => p.isGuestStar);
+    if (isForbiddenDoor) {
+      score += 7;
+      const guestNames = participants.filter(p => p.isGuestStar).map(p => `${p.name} (${p.guestHomePromotionName || 'Foreign Promotion'})`).join(', ');
+      notes.push(`🌐 Forbidden Door Showcase (+7 pts): Historic cross-promotional spectacle featuring global attraction ${guestNames || 'international guest talent'}!`);
+      if (segment.titleId) {
+        score += 3;
+        notes.push(`🏆 Interpromotional Title Stakes (+3 pts): International champion stakes created white-hot drama.`);
+      }
+    }
+
     // Alignment dynamic: Face vs Heel has natural heat
     const hasFace = participants.some(p => p.alignment === 'Face');
     const hasHeel = participants.some(p => p.alignment === 'Heel');
@@ -528,9 +557,12 @@ export function advanceWeekEngine(
   const { promotion, currentWeek, currentYear, currentShowCard, showResult, freeAgents, difficulty } = currentState;
 
   const newNews: NewsItem[] = [];
-  const updatedRoster: Wrestler[] = promotion.roster.map(w => ({ ...w }));
+  let updatedRoster: Wrestler[] = promotion.roster.map(w => ({ ...w }));
   let updatedTitles = promotion.titles.map(t => ({ ...t }));
   const updatedFeuds = promotion.feuds.map(f => ({ ...f }));
+  let currentPrestige = (typeof promotion.prestige === 'number' && !isNaN(promotion.prestige)) ? promotion.prestige : 75;
+  let totalPrestigeEarnedTonight = 0;
+  const farewellHighlights: string[] = [];
 
   // Track who was booked
   const bookedWrestlerIds = new Set<string>();
@@ -737,6 +769,126 @@ export function advanceWeekEngine(
     }
   });
 
+  // 2.5. Process Farewell Tour Special Matches and Company Prestige Multipliers
+  const processedFarewellWrestlerIds = new Set<string>();
+
+  currentShowCard.forEach(seg => {
+    if (seg.category !== 'Match') return;
+
+    // Check if segment is marked as farewell or has any participant on active farewell tour
+    const farewellParticipants = updatedRoster.filter(w => 
+      seg.participantIds.includes(w.id) && 
+      (seg.isFarewellMatch || (w.farewellTour && w.farewellTour.isActive) || w.id === seg.farewellWrestlerId)
+    );
+
+    farewellParticipants.forEach(veteran => {
+      if (processedFarewellWrestlerIds.has(veteran.id)) return;
+      processedFarewellWrestlerIds.add(veteran.id);
+
+      if (!veteran.farewellTour) {
+        veteran.farewellTour = {
+          isActive: true,
+          tourTitle: `${veteran.name}: The Last Ride`,
+          startedWeek: currentWeek,
+          startedYear: currentYear,
+          weeksRemaining: 8,
+          totalWeeks: 8,
+          matchesBookedCount: 0,
+          targetMatchesCount: 5,
+          prestigeAccumulated: 0,
+          farewellStipulation: 'Passing the Torch'
+        };
+      }
+
+      veteran.farewellTour.matchesBookedCount += 1;
+      const segEval = showResult.segmentEvaluations?.find(se => se.segment.id === seg.id);
+      const isClassic = segEval && segEval.score >= 80;
+
+      // Base boost: +1 to company prestige (+2 for 4+ star classic)
+      const prestigeGain = isClassic ? 2 : 1;
+      veteran.farewellTour.prestigeAccumulated += prestigeGain;
+      totalPrestigeEarnedTonight += prestigeGain;
+      currentPrestige = Math.min(100, currentPrestige + prestigeGain);
+
+      farewellHighlights.push(
+        `${veteran.name}: Match #${veteran.farewellTour.matchesBookedCount}/${veteran.farewellTour.targetMatchesCount} of "${veteran.farewellTour.tourTitle}" (+${prestigeGain} Company Prestige)`
+      );
+
+      // Check if veteran faced their designated protege
+      const protegeId = veteran.farewellTour.torchPassedWrestlerId;
+      if (protegeId && seg.participantIds.includes(protegeId)) {
+        const protege = updatedRoster.find(w => w.id === protegeId);
+        if (protege) {
+          protege.overness = Math.min(100, protege.overness + 4);
+          protege.morale = Math.min(100, protege.morale + 10);
+          protege.workrate = Math.min(100, protege.workrate + 2);
+
+          newNews.push({
+            id: `news-torch-passed-${Date.now()}-${protege.id}`,
+            week: currentWeek,
+            category: 'Wrestler',
+            importance: 'High',
+            headline: `PASSING THE TORCH: ${veteran.name} Passes the Torch to ${protege.name}!`,
+            details: `In a historic farewell tour encounter, living legend ${veteran.name} tested young prodigy ${protege.name} inside the ring. Generational momentum and respect have been passed (+4 Overness, +10 Morale)!`
+          });
+        }
+      }
+
+      newNews.push({
+        id: `news-farewell-match-${Date.now()}-${veteran.id}`,
+        week: currentWeek,
+        category: 'Promotion',
+        importance: 'High',
+        headline: `FAREWELL TOUR: ${veteran.name} Electrifies in Match #${veteran.farewellTour.matchesBookedCount} of "${veteran.farewellTour.tourTitle}"!`,
+        details: `Living legend ${veteran.name} delivered an emotional showcase on tonight's broadcast, boosting ${promotion.name}'s company prestige to ${currentPrestige}/100 (+${prestigeGain} pts)!`
+      });
+
+      // Check if tour is now culminating
+      if (veteran.farewellTour.matchesBookedCount >= veteran.farewellTour.targetMatchesCount) {
+        veteran.farewellTour.isCulminated = true;
+        veteran.farewellTour.isActive = false;
+
+        // Culmination grand finale prestige bonus!
+        const grandFinalePrestige = 4;
+        currentPrestige = Math.min(100, currentPrestige + grandFinalePrestige);
+        veteran.farewellTour.prestigeAccumulated += grandFinalePrestige;
+        totalPrestigeEarnedTonight += grandFinalePrestige;
+
+        // Strip championships if still holding any
+        if (veteran.championshipIds && veteran.championshipIds.length > 0) {
+          updatedTitles.forEach(t => {
+            if (t.currentHolderIds.includes(veteran.id)) {
+              t.currentHolderIds = t.currentHolderIds.filter(id => id !== veteran.id);
+              if (t.history && t.history.length > 0 && !t.history[0].lostWeek) {
+                t.history[0].lostWeek = currentWeek;
+                t.history[0].lostYear = currentYear;
+                t.history[0].isCurrent = false;
+                t.history[0].notes = `${t.history[0].notes || ''} (Vacated upon farewell tour culmination)`;
+              }
+            }
+          });
+        }
+
+        veteran.isRetired = true;
+        veteran.retiredWeek = currentWeek;
+        veteran.retiredYear = currentYear;
+        veteran.retirementReason = `Culminated iconic '${veteran.farewellTour.tourTitle}' send-off with ${veteran.farewellTour.matchesBookedCount} historic matches.`;
+        veteran.salary = 0;
+        veteran.contractWeeks = 0;
+        veteran.hofNominationPending = true;
+
+        newNews.push({
+          id: `news-farewell-culmination-${Date.now()}-${veteran.id}`,
+          week: currentWeek,
+          category: 'Promotion',
+          importance: 'High',
+          headline: `ICONIC SEND-OFF: ${veteran.name} Culminates Farewell Tour & Retires!`,
+          details: `With the conclusion of "${veteran.farewellTour.tourTitle}", ${veteran.name} officially hangs up the boots to a thunderous standing ovation. The farewell tour generated immense acclaim (+${veteran.farewellTour.prestigeAccumulated} Total Prestige), vaulting ${promotion.name}'s company prestige to ${currentPrestige}/100 and unlocking immediate Hall of Fame enshrinement!`
+        });
+      }
+    });
+  });
+
   // Track Career Longevity in Simulator, Retirement Age & Retirement Risk for all roster members
   updatedRoster.forEach(w => {
     w.careerWeeksInSimulator = (w.careerWeeksInSimulator || Math.max(10, (w.age - 20) * 8)) + 1;
@@ -880,7 +1032,139 @@ export function advanceWeekEngine(
   const totalRevenue = tvRevenue + ticketSales + merchSales + ppvSales;
   const totalExpenses = totalPayroll + productionCost + arenaCost + medicalCost + devCost;
   const netProfit = totalRevenue - totalExpenses;
-  const endingBalance = currentBudget + netProfit;
+  let endingBalance = currentBudget + netProfit;
+
+  // 5.5 Forbidden Door & Global Alliances Engine
+  let updatedForbiddenDoor = promotion.forbiddenDoor ? { ...promotion.forbiddenDoor } : undefined;
+  if (updatedForbiddenDoor) {
+    const fdPartners = (updatedForbiddenDoor.partners || []).map(p => ({ ...p }));
+    let fdLoaned = (updatedForbiddenDoor.loanedRoster || []).map(l => ({ ...l }));
+    let fdBorrowed = (updatedForbiddenDoor.borrowedRoster || []).map(b => ({ ...b }));
+    let fdSupercards = (updatedForbiddenDoor.supercards || []).map(s => ({ ...s }));
+
+    // Check if any Forbidden Door matches were featured tonight
+    const fdSegments = currentShowCard.filter(s => s.isForbiddenDoorMatch || s.participantIds.some(id => {
+      const w = updatedRoster.find(r => r.id === id);
+      return w?.isGuestStar;
+    }));
+
+    if (fdSegments.length > 0) {
+      const fdPrestigeBoost = Math.min(3, fdSegments.length);
+      currentPrestige = Math.min(100, currentPrestige + fdPrestigeBoost);
+      totalPrestigeEarnedTonight += fdPrestigeBoost;
+      updatedForbiddenDoor.totalPrestigeGained = (updatedForbiddenDoor.totalPrestigeGained || 0) + fdPrestigeBoost;
+
+      newNews.push({
+        id: `news-fd-showcase-${Date.now()}`,
+        week: currentWeek,
+        category: 'Promotion',
+        importance: 'High',
+        headline: `🌐 FORBIDDEN DOOR BUZZ: International Dream Matches Electrify Global Audience!`,
+        details: `${promotion.name}'s broadcast showcased marquee interpromotional clashes, drawing international praise and vaulting company prestige (+${fdPrestigeBoost} pts, now ${currentPrestige}/100)!`
+      });
+    }
+
+    // Process borrowed guest talent remaining weeks
+    const remainingGuests: typeof fdBorrowed = [];
+    fdBorrowed.forEach(b => {
+      b.weeksRemaining -= 1;
+      if (b.weeksRemaining <= 0) {
+        // Conclude guest star tour and remove from active roster
+        updatedRoster = updatedRoster.filter(w => w.id !== b.wrestler.id);
+        newNews.push({
+          id: `news-fd-conclude-${Date.now()}-${b.wrestler.id}`,
+          week: currentWeek,
+          category: 'Promotion',
+          importance: 'Medium',
+          headline: `INTERNATIONAL FAREWELL: ${b.wrestler.name} Concludes Guest Star Tour!`,
+          details: `Global attraction ${b.wrestler.name} has concluded their scheduled tour with ${promotion.name} and returns to ${b.partnerName} with high acclaim.`
+        });
+      } else {
+        remainingGuests.push(b);
+      }
+    });
+    updatedForbiddenDoor.borrowedRoster = remainingGuests;
+
+    // Process loaned talent on foreign excursion
+    const remainingLoans: typeof fdLoaned = [];
+    fdLoaned.forEach(l => {
+      l.weeksRemaining -= 1;
+      if (l.weeksRemaining <= 0) {
+        // Return to active roster with total gained stats
+        const totalBonus = Math.max(3, Math.round(l.totalWeeks * 0.9));
+        const returnedStar: Wrestler = {
+          id: l.wrestlerId,
+          name: l.wrestlerName,
+          nickname: 'The Returning Traveler',
+          age: 25,
+          gender: 'Male',
+          style: 'Technician',
+          alignment: 'Face',
+          push: 'Upper Midcard',
+          overness: Math.min(100, l.startingOverness + Math.round(totalBonus * 0.8)),
+          workrate: Math.min(100, l.startingWorkrate + totalBonus),
+          micSkills: 74,
+          stamina: 88,
+          morale: 100,
+          fatigue: 0,
+          salary: 2800,
+          contractWeeks: 36,
+          wins: 14,
+          losses: 5,
+          draws: 0,
+          championshipIds: [],
+          injury: { injured: false }
+        };
+        updatedRoster.push(returnedStar);
+
+        newNews.push({
+          id: `news-fd-return-${Date.now()}-${l.wrestlerId}`,
+          week: currentWeek,
+          category: 'Promotion',
+          importance: 'High',
+          headline: `HERO'S RETURN: ${l.wrestlerName} Returns from ${l.partnerName} Excursion!`,
+          details: `${l.wrestlerName} has completed an intensive foreign sabbatical in ${l.partnerName}, returning to ${promotion.name} with transformed fighting spirit (+${totalBonus} ${l.targetFocus.toUpperCase()})!`
+        });
+      } else {
+        remainingLoans.push(l);
+      }
+    });
+    updatedForbiddenDoor.loanedRoster = remainingLoans;
+
+    // Process scheduled Forbidden Door Supercards
+    fdSupercards.forEach(sc => {
+      if (sc.scheduledWeek === currentWeek && !sc.isCompleted) {
+        sc.isCompleted = true;
+        const ourWins = 4;
+        const partnerWins = 3;
+        sc.ourScore = ourWins;
+        sc.partnerScore = partnerWins;
+        sc.attendance = sc.venueCapacity;
+        const gross = sc.venueCapacity * sc.ticketPrice;
+        sc.grossRevenue = gross;
+        const prestigeWon = 5;
+        sc.prestigeEarned = prestigeWon;
+        currentPrestige = Math.min(100, currentPrestige + prestigeWon);
+        totalPrestigeEarnedTonight += prestigeWon;
+        updatedForbiddenDoor.totalPrestigeGained = (updatedForbiddenDoor.totalPrestigeGained || 0) + prestigeWon;
+        updatedForbiddenDoor.trophiesWon = (updatedForbiddenDoor.trophiesWon || 0) + 1;
+
+        // Add 50% split revenue to budget
+        endingBalance += Math.round(gross * 0.5);
+
+        newNews.push({
+          id: `news-fd-supercard-${Date.now()}-${sc.id}`,
+          week: currentWeek,
+          category: 'Promotion',
+          importance: 'High',
+          headline: `GLOBAL SPECTACLE: ${sc.name} Sells Out ${sc.venue} (${sc.attendance.toLocaleString()} Fans)!`,
+          details: `The historic co-promoted supercard saw ${promotion.shortName} defeat ${sc.partnerName} in a thrilling 4-3 series! Gross gate hit $${gross.toLocaleString()} and company prestige surged (+${prestigeWon} pts, now ${currentPrestige}/100)!`
+        });
+      }
+    });
+    updatedForbiddenDoor.supercards = fdSupercards;
+    updatedForbiddenDoor.partners = fdPartners;
+  }
 
   const financialReport: FinancialReport = {
     week: currentWeek,
@@ -1018,6 +1302,18 @@ export function advanceWeekEngine(
   // Natural Retirement Evaluation based on retirementAge, age curves, and injury history
   let remainingActiveRoster: Wrestler[] = [];
   updatedRoster.forEach(w => {
+    // Superstar was already retired via Farewell Tour culmination on tonight's show
+    if (w.isRetired) {
+      updatedRetiredRoster.unshift(w);
+      return;
+    }
+
+    // Active Farewell Tour participants never retire abruptly midway through their tour
+    if (w.farewellTour && w.farewellTour.isActive) {
+      remainingActiveRoster.push(w);
+      return;
+    }
+
     const isChampion = updatedTitles.some(t => t.currentHolderIds.includes(w.id));
     const targetRetireAge = w.retirementAge || (w.style === 'High Flyer' ? 40 : w.style === 'Hardcore' ? 41 : w.style === 'Powerhouse' ? 45 : 44);
     const injuries = w.careerInjuriesCount || 0;
@@ -1453,8 +1749,13 @@ export function advanceWeekEngine(
     }
   }
 
+  // Attach show results metadata for prestige & farewell tour
+  showResult.companyPrestigeEarned = totalPrestigeEarnedTonight;
+  showResult.farewellTourHighlights = farewellHighlights;
+
   const updatedPromotion: Promotion = {
     ...promotion,
+    prestige: Math.min(100, Math.max(10, currentPrestige)),
     budget: endingBalance,
     networkSatisfaction: newNetworkSatisfaction,
     roster: remainingActiveRoster,
@@ -1479,7 +1780,8 @@ export function advanceWeekEngine(
     currentGM: updatedGM,
     availableGMs: promotion.availableGMs,
     pendingGMProposal: undefined,
-    gmHistory: updatedGMHistory
+    gmHistory: updatedGMHistory,
+    forbiddenDoor: updatedForbiddenDoor
   };
 
   return {

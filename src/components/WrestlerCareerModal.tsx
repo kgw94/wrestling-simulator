@@ -32,6 +32,7 @@ export interface WrestlerCareerModalProps {
   promotion: Promotion;
   onClose: () => void;
   onOpenRetirementPlan?: (wrestler: Wrestler) => void;
+  onTriggerFarewellTour?: (wrestler: Wrestler) => void;
 }
 
 export interface ExtractedTitleReign {
@@ -56,7 +57,8 @@ export const WrestlerCareerModal: React.FC<WrestlerCareerModalProps> = ({
   wrestler,
   promotion,
   onClose,
-  onOpenRetirementPlan
+  onOpenRetirementPlan,
+  onTriggerFarewellTour
 }) => {
   // ESC key to close
   useEffect(() => {
@@ -265,6 +267,101 @@ export const WrestlerCareerModal: React.FC<WrestlerCareerModalProps> = ({
             </span>
           </div>
         )}
+
+        {/* FAREWELL TOUR ACTIVE DASHBOARD OR RETIREMENT TRIGGER BANNER */}
+        {wrestler.farewellTour && wrestler.farewellTour.isActive ? (
+          <div className="bg-gradient-to-r from-amber-950/40 via-yellow-950/20 to-zinc-950 border border-amber-500/50 rounded-xl p-4 space-y-3 font-mono text-xs shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-400" />
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-amber-400 block tracking-wider">
+                    Official Active Farewell Tour
+                  </span>
+                  <h4 className="text-base font-bold text-white font-mono">
+                    "{wrestler.farewellTour.tourTitle}"
+                  </h4>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <span className="text-[10px] text-zinc-400 uppercase block">Company Prestige Boost</span>
+                <span className="text-base font-bold text-amber-400">+{wrestler.farewellTour.prestigeAccumulated} Pts</span>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div>
+              <div className="flex items-center justify-between text-[11px] text-zinc-300 mb-1">
+                <span>
+                  Tour Matches Completed: <strong className="text-amber-400">{wrestler.farewellTour.matchesBookedCount}</strong> / {wrestler.farewellTour.targetMatchesCount}
+                </span>
+                <span className="text-zinc-400">
+                  {Math.round((wrestler.farewellTour.matchesBookedCount / wrestler.farewellTour.targetMatchesCount) * 100)}%
+                </span>
+              </div>
+              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
+                <div 
+                  className="h-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all"
+                  style={{ width: `${Math.min(100, Math.round((wrestler.farewellTour.matchesBookedCount / wrestler.farewellTour.targetMatchesCount) * 100))}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-zinc-800">
+              <span className="text-zinc-400">
+                Protege: <strong className="text-zinc-200">{wrestler.farewellTour.torchPassedWrestlerName || 'Open Roster'}</strong>
+              </span>
+              <span className="text-zinc-400 text-right">
+                Stipulation: <strong className="text-zinc-200">{wrestler.farewellTour.farewellStipulation}</strong>
+              </span>
+            </div>
+
+            {onTriggerFarewellTour && (
+              <div className="pt-1 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onTriggerFarewellTour(wrestler);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-500/40 text-xs font-bold transition flex items-center gap-1.5"
+                >
+                  <Trophy className="w-3.5 h-3.5" />
+                  <span>Manage Farewell Tour Details</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (wrestler.age >= targetRetire - 3 || (wrestler.careerInjuriesCount || 0) >= 3 || wrestler.age >= 38) && !wrestler.isRetired ? (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
+            <div className="flex items-start gap-2.5">
+              <Sparkles className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold text-amber-300 uppercase tracking-wider block">
+                  Veteran Approaching Retirement: Farewell Tour Eligible
+                </span>
+                <p className="text-zinc-300 text-[11px] mt-0.5 font-sans">
+                  Sanction an official multi-match farewell tour for {wrestler.name}. Every special farewell match booked boosts company prestige!
+                </p>
+              </div>
+            </div>
+
+            {onTriggerFarewellTour && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onTriggerFarewellTour(wrestler);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs shrink-0 transition flex items-center gap-1.5 shadow-md shadow-amber-500/10"
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>Launch Farewell Tour (+Prestige)</span>
+              </button>
+            )}
+          </div>
+        ) : null}
 
         {/* SECTION 1: CAREER WIN / LOSS RECORD & STATS */}
         <div className="space-y-3">

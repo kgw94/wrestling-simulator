@@ -565,6 +565,38 @@ export const PRESET_PROMOTIONS: Promotion[] = [
         momentum: 'Boiling Hot',
         description: 'Former allies torn apart when Rayne used a foreign object to steal the Women\'s Championship from Victoria.'
       }
+    ],
+    tagTeams: [
+      {
+        id: 'team-apw-1',
+        name: 'The Iron Syndicate',
+        memberIds: ['apw-5', 'apw-6'],
+        chemistry: 88,
+        wins: 14,
+        losses: 3,
+        finisher: 'Doomsday Decapitation',
+        isActive: true
+      },
+      {
+        id: 'team-apw-2',
+        name: 'Aerial Dynasty',
+        memberIds: ['apw-11', 'apw-12'],
+        chemistry: 84,
+        wins: 11,
+        losses: 5,
+        finisher: 'Stereo 450 Splash',
+        isActive: true
+      },
+      {
+        id: 'team-apw-3',
+        name: 'Texas Roughnecks',
+        memberIds: ['apw-9', 'apw-10'],
+        chemistry: 78,
+        wins: 8,
+        losses: 6,
+        finisher: 'Spinebuster / Lariat Combo',
+        isActive: true
+      }
     ]
   },
   {
@@ -1007,6 +1039,25 @@ export const PRESET_PROMOTIONS: Promotion[] = [
         history: [
           { id: 'rh-vu-q1', reignNumber: 1, holderNames: 'Roxy \'Riot\' Vicious', wonWeek: 12, wonYear: 1, defenses: 2, eventWonAt: 'Bloodbath Underground', notes: 'Defeated Luna Eclipse in Barbwire Board Deathmatch', reignRating: '★★★★ Violent', isCurrent: true }
         ]
+      },
+      {
+        id: 'vu-tag',
+        name: 'VU Tag Team Carnage Championship',
+        shortName: 'VU Tag',
+        type: 'Tag Team',
+        division: 'Tag Team',
+        gender: 'Open',
+        prestige: 68,
+        isTagTeam: true,
+        currentHolderIds: ['vu-9', 'vu-10'],
+        defenses: 2,
+        strapColor: 'Classic Black',
+        plateStyle: 'Skull & Barbed Wire',
+        minWorkrateBonus: 4,
+        description: 'Hardcore tandem belts defended in Texas Tornado, tables, and barbwire street fights.',
+        history: [
+          { id: 'rh-vu-tag1', reignNumber: 1, holderNames: 'The Junkyard Heavyweights (Ox Malone & Nails Nolan)', holderIds: ['vu-9', 'vu-10'], wonWeek: 11, wonYear: 1, defenses: 2, eventWonAt: 'Industrial Carnage', notes: 'Brutal tables match victory', reignRating: '★★★1/2', isCurrent: true }
+        ]
       }
     ],
     feuds: [
@@ -1029,6 +1080,38 @@ export const PRESET_PROMOTIONS: Promotion[] = [
         startedWeek: 18,
         momentum: 'Boiling Hot',
         description: 'Harley ambushed Roxy with a light-tube guitar following a bloody Queen of Carnage title defense.'
+      }
+    ],
+    tagTeams: [
+      {
+        id: 'team-vu-1',
+        name: 'The Junkyard Heavyweights',
+        memberIds: ['vu-9', 'vu-10'],
+        chemistry: 82,
+        wins: 10,
+        losses: 4,
+        finisher: 'Concrete Demolition Drop',
+        isActive: true
+      },
+      {
+        id: 'team-vu-2',
+        name: 'Anarchy Thrillseekers',
+        memberIds: ['vu-5', 'vu-11'],
+        chemistry: 85,
+        wins: 9,
+        losses: 5,
+        finisher: 'Stereo Table Plancha',
+        isActive: true
+      },
+      {
+        id: 'team-vu-3',
+        name: 'The Deathmatch Disciples',
+        memberIds: ['vu-1', 'vu-2'],
+        chemistry: 90,
+        wins: 15,
+        losses: 2,
+        finisher: 'Double Barbed Wire Chokeslam',
+        isActive: true
       }
     ]
   },
@@ -1472,6 +1555,25 @@ export const PRESET_PROMOTIONS: Promotion[] = [
         history: [
           { id: 'rh-sspw-g1', reignNumber: 1, holderNames: 'Hikaru Arai', wonWeek: 14, wonYear: 1, defenses: 4, eventWonAt: 'Goddess Grand Prix', notes: 'Cross-armbreaker submission victory', reignRating: '★★★★1/2', isCurrent: true }
         ]
+      },
+      {
+        id: 'sspw-tag',
+        name: 'SSPW Twin Dragon Tag Championship',
+        shortName: 'SSPW Tag',
+        type: 'Tag Team',
+        division: 'Tag Team',
+        gender: 'Male',
+        prestige: 82,
+        isTagTeam: true,
+        currentHolderIds: ['sspw-6', 'sspw-10'],
+        defenses: 3,
+        strapColor: 'Pure White',
+        plateStyle: 'Winged Globe',
+        minWorkrateBonus: 6,
+        description: 'Prestigious twin fighting-spirit belts awarded to the most cohesive warriors in Puroresu.',
+        history: [
+          { id: 'rh-sspw-tag1', reignNumber: 1, holderNames: 'The Rising Sun Dragons (Genki Okabe & Daisuke Endo)', holderIds: ['sspw-6', 'sspw-10'], wonWeek: 12, wonYear: 1, defenses: 3, eventWonAt: 'Tokyo Dome Spectacular', notes: 'Twin Dragon lariat pinfall at 32:40', reignRating: '★★★★3/4 Classic', isCurrent: true }
+        ]
       }
     ],
     feuds: [
@@ -1494,6 +1596,38 @@ export const PRESET_PROMOTIONS: Promotion[] = [
         startedWeek: 16,
         momentum: 'Boiling Hot',
         description: 'Mori brutally attacked the Goddess Champion at ringside with a roundhouse kick, vowing to end Arai\'s Joshi golden reign.'
+      }
+    ],
+    tagTeams: [
+      {
+        id: 'team-sspw-1',
+        name: 'The Rising Sun Dragons',
+        memberIds: ['sspw-6', 'sspw-10'],
+        chemistry: 86,
+        wins: 12,
+        losses: 4,
+        finisher: 'Twin Dragon Lariat',
+        isActive: true
+      },
+      {
+        id: 'team-sspw-2',
+        name: 'The Dojo Brothers',
+        memberIds: ['sspw-13', 'sspw-14'],
+        chemistry: 80,
+        wins: 7,
+        losses: 8,
+        finisher: 'Double Boston Crab',
+        isActive: true
+      },
+      {
+        id: 'team-sspw-3',
+        name: 'Honor & Spirit',
+        memberIds: ['sspw-1', 'sspw-4'],
+        chemistry: 88,
+        wins: 14,
+        losses: 2,
+        finisher: 'Burning Crossface Combination',
+        isActive: true
       }
     ]
   }
