@@ -4,6 +4,7 @@ import { MarkdownTableView } from './MarkdownTableView';
 import { WrestlerCareerModal } from './WrestlerCareerModal';
 import { FarewellTourModal } from './FarewellTourModal';
 import { calculateHallOfFameScorecard } from '../data/customDefaults';
+import { handleAutomaticTitleVacancyForWrestler } from '../utils/titleUtils';
 import { 
   Users, 
   UserPlus, 
@@ -33,7 +34,9 @@ import {
   Pencil,
   Flame,
   Scroll,
-  TrendingUp
+  TrendingUp,
+  Crown,
+  Briefcase
 } from 'lucide-react';
 import { formatNumber } from '../utils/format';
 
@@ -60,7 +63,8 @@ export const RosterView: React.FC<RosterViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'roster' | 'free_agents'>('roster');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'overness' | 'retirement_risk' | 'age' | 'wins'>('overness');
+  const [sortBy, setSortBy] = useState<'overness' | 'retirement_risk' | 'age' | 'wins' | 'contract_expiry' | 'clique'>('overness');
+  const [filterCategory, setFilterCategory] = useState<'all' | 'bidding_wars' | 'expiring' | 'cliques'>('all');
   
   // Modals & State
   const [selectedCareerWrestler, setSelectedCareerWrestler] = useState<Wrestler | null>(null);
@@ -113,17 +117,39 @@ export const RosterView: React.FC<RosterViewProps> = ({
     };
   };
 
+  const activeBiddingWars = promotion.activeBiddingWars || [];
+  const cliques = promotion.backstageCliques || [];
+
   // Filtered and Sorted Roster
   const filteredRoster = promotion.roster
-    .filter(w =>
-      w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.nickname.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      w.style.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    .filter(w => {
+      const matchesSearch = 
+        w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        w.nickname.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        w.style.toLowerCase().includes(searchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+
+      if (filterCategory === 'bidding_wars') {
+        return activeBiddingWars.some(bw => bw.wrestlerId === w.id);
+      }
+      if (filterCategory === 'expiring') {
+        return (w.contractWeeks || 52) <= 8;
+      }
+      if (filterCategory === 'cliques') {
+        return cliques.some(c => c.memberIds.includes(w.id));
+      }
+      return true;
+    })
     .sort((a, b) => {
       if (sortBy === 'overness') return b.overness - a.overness;
       if (sortBy === 'age') return b.age - a.age;
       if (sortBy === 'wins') return b.wins - a.wins;
+      if (sortBy === 'contract_expiry') return (a.contractWeeks || 52) - (b.contractWeeks || 52);
+      if (sortBy === 'clique') {
+        const hasA = cliques.some(c => c.memberIds.includes(a.id)) ? 1 : 0;
+        const hasB = cliques.some(c => c.memberIds.includes(b.id)) ? 1 : 0;
+        return hasB - hasA || b.overness - a.overness;
+      }
       if (sortBy === 'retirement_risk') {
         const order = { 'Imminent': 4, 'High': 3, 'Moderate': 2, 'Low': 1 };
         const riskA = order[getRetirementRiskInfo(a).level as keyof typeof order] || 1;
@@ -305,18 +331,23 @@ export const RosterView: React.FC<RosterViewProps> = ({
     const updatedRoster = promotion.roster.filter(w => w.id !== wrestlerId);
     const updatedRetired = [retiredW, ...(promotion.retiredRoster || [])];
 
-    // Vacate any championships held
+    // Automatically vacate any championships held upon retirement
     let updatedTitles = [...promotion.titles];
     if (wrestler.championshipIds && wrestler.championshipIds.length > 0) {
-      updatedTitles = updatedTitles.map(t => {
-        if (t.currentHolderIds.includes(wrestler.id)) {
-          return {
-            ...t,
-            currentHolderIds: t.currentHolderIds.filter(id => id !== wrestler.id)
-          };
+      const vacancyResult = handleAutomaticTitleVacancyForWrestler(
+        wrestler,
+        promotion.titles,
+        promotion.roster,
+        1,
+        'retirement',
+        { promotionName: promotion.name }
+      );
+      if (vacancyResult.vacatedTitlesCount > 0) {
+        updatedTitles = vacancyResult.updatedTitles;
+        if (onAddNewsItem) {
+          vacancyResult.newNews.forEach(n => onAddNewsItem(n));
         }
-        return t;
-      });
+      }
     }
 
     onUpdateRoster(updatedRoster);
@@ -366,14 +397,18 @@ export const RosterView: React.FC<RosterViewProps> = ({
   };
 
   // Build Markdown table of the roster
-  let rosterMarkdown = `| Name & Gimmick | Style | Age / Retire | Injuries | HOF Trajectory | Record | Salary/Wk | Status |
-|---|---|---|---|---|---|---|---|
+  let rosterMarkdown = `| Name & Gimmick | Style | Age / Retire | Contract | Backstage Clique | HOF Trajectory | Record | Salary/Wk | Status |
+|---|---|---|---|---|---|---|---|---|
 `;
   promotion.roster.forEach(w => {
     const injuryStr = w.injury.injured ? `🚑 ${w.injury.name} (${w.injury.weeksRemaining}w)` : 'Active';
     const scorecard = calculateHallOfFameScorecard(w, promotion.titles);
     const retireTarget = w.retirementAge || 44;
-    rosterMarkdown += `| ${w.name} ("${w.nickname}") | ${w.style} (${w.alignment}) | Age ${w.age} / Retires ~${retireTarget} | ${w.careerInjuriesCount || 0} major injuries | ${scorecard.eligibilityTier} (${scorecard.overallScore}/100) | ${w.wins}-${w.losses}-${w.draws} | $${formatNumber(w.salary)} | ${injuryStr} |\n`;
+    const clique = cliques.find(c => c.memberIds.includes(w.id));
+    const cliqueStr = clique ? `${clique.name} (${clique.leaderId === w.id ? 'Leader' : 'Member'})` : 'Independent';
+    const war = activeBiddingWars.find(bw => bw.wrestlerId === w.id);
+    const contractStr = war ? `🔥 War (${war.leadingBidderName})` : `${w.contractWeeks || 52} wks`;
+    rosterMarkdown += `| ${w.name} ("${w.nickname}") | ${w.style} (${w.alignment}) | Age ${w.age} / Retires ~${retireTarget} | ${contractStr} | ${cliqueStr} | ${scorecard.eligibilityTier} (${scorecard.overallScore}/100) | ${w.wins}-${w.losses}-${w.draws} | $${formatNumber(w.salary)} | ${injuryStr} |\n`;
   });
 
   const agingTalentCount = promotion.roster.filter(w => {
@@ -505,6 +540,8 @@ export const RosterView: React.FC<RosterViewProps> = ({
               className="bg-transparent text-zinc-200 font-bold focus:outline-none cursor-pointer"
             >
               <option value="overness" className="bg-zinc-900">Highest Overness</option>
+              <option value="contract_expiry" className="bg-zinc-900">Expiring Contracts First</option>
+              <option value="clique" className="bg-zinc-900">Backstage Cliques First</option>
               <option value="retirement_risk" className="bg-zinc-900">Retirement Risk / Proximity</option>
               <option value="age" className="bg-zinc-900">Oldest Veterans First</option>
               <option value="wins" className="bg-zinc-900">Most Career Wins</option>
@@ -512,6 +549,60 @@ export const RosterView: React.FC<RosterViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Category Filter Pills */}
+      {activeTab === 'roster' && (
+        <div className="flex flex-wrap items-center gap-2 pt-1 font-mono text-xs">
+          <span className="text-zinc-500 text-[11px]">QUICK FILTER:</span>
+          <button
+            type="button"
+            onClick={() => setFilterCategory('all')}
+            className={`px-2.5 py-1 rounded transition ${
+              filterCategory === 'all'
+                ? 'bg-sky-500 text-black font-bold'
+                : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+            }`}
+          >
+            All Talent ({promotion.roster.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterCategory('bidding_wars')}
+            className={`px-2.5 py-1 rounded transition flex items-center gap-1 ${
+              filterCategory === 'bidding_wars'
+                ? 'bg-rose-500 text-black font-bold'
+                : 'bg-zinc-900 text-rose-400 hover:text-rose-300 border border-zinc-800'
+            }`}
+          >
+            <Flame className="w-3 h-3 text-rose-400" />
+            <span>In Bidding War ({activeBiddingWars.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterCategory('expiring')}
+            className={`px-2.5 py-1 rounded transition flex items-center gap-1 ${
+              filterCategory === 'expiring'
+                ? 'bg-amber-500 text-black font-bold'
+                : 'bg-zinc-900 text-amber-400 hover:text-amber-300 border border-zinc-800'
+            }`}
+          >
+            <Clock className="w-3 h-3 text-amber-400" />
+            <span>Expiring (&le;8 wks) ({promotion.roster.filter(w => (w.contractWeeks || 52) <= 8).length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterCategory('cliques')}
+            className={`px-2.5 py-1 rounded transition flex items-center gap-1 ${
+              filterCategory === 'cliques'
+                ? 'bg-amber-400 text-black font-bold'
+                : 'bg-zinc-900 text-amber-300 hover:text-white border border-zinc-800'
+            }`}
+          >
+            <Crown className="w-3 h-3 text-amber-400" />
+            <span>In Clique ({promotion.roster.filter(w => cliques.some(c => c.memberIds.includes(w.id))).length})</span>
+          </button>
+        </div>
+      )}
 
       {/* Markdown View of Roster */}
       {activeTab === 'roster' && (
@@ -602,6 +693,49 @@ export const RosterView: React.FC<RosterViewProps> = ({
                     <span className="text-[11px] font-mono text-zinc-500">{w.style}</span>
                   </div>
 
+                  {/* Bidding War Alert Banner if targeted */}
+                  {(() => {
+                    const activeWar = activeBiddingWars.find(bw => bw.wrestlerId === w.id);
+                    if (!activeWar) return null;
+                    return (
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onNavigate) onNavigate('locker_room');
+                        }}
+                        className="bg-rose-950/40 border border-rose-500/60 p-2 rounded-lg text-xs font-mono text-rose-300 flex items-center justify-between gap-1.5 mb-2 hover:bg-rose-900/40 transition cursor-pointer shadow-sm"
+                        title="Click to enter Locker Room Politics and counter-bid"
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <Flame className="w-3.5 h-3.5 text-rose-400 shrink-0 animate-pulse" />
+                          <span className="truncate"><strong>Bidding War:</strong> {activeWar.leadingBidderName} leads</span>
+                        </div>
+                        <span className="px-1.5 py-0.5 rounded bg-rose-500 hover:bg-rose-400 text-black font-bold text-[10px] shrink-0">
+                          Counter
+                        </span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Backstage Clique Badge */}
+                  {(() => {
+                    const clique = cliques.find(c => c.memberIds.includes(w.id));
+                    if (!clique) return null;
+                    const isCliqueLeader = clique.leaderId === w.id;
+                    return (
+                      <div className="flex items-center justify-between bg-zinc-950/70 px-2 py-1 rounded border border-zinc-800 text-[11px] font-mono text-amber-300/90 mb-2">
+                        <span className="flex items-center gap-1 truncate">
+                          <Crown className="w-3 h-3 text-amber-400 shrink-0" />
+                          <span className="truncate font-bold">{clique.name}</span>
+                          <span className="text-[10px] text-zinc-400">({isCliqueLeader ? 'Leader' : 'Member'})</span>
+                        </span>
+                        <span className="text-[10px] text-zinc-400 shrink-0">
+                          {clique.influence} Pwr
+                        </span>
+                      </div>
+                    );
+                  })()}
+
                   {/* Longevity & Retirement Age Bar */}
                   <div className="bg-zinc-950/80 p-2.5 rounded-lg border border-zinc-800/80 mb-3 space-y-1.5 font-mono text-xs">
                     <div className="flex items-center justify-between text-[11px]">
@@ -640,6 +774,17 @@ export const RosterView: React.FC<RosterViewProps> = ({
                       >
                         <span>🚑 {w.careerInjuriesCount || 0} Injuries</span>
                       </button>
+                    </div>
+
+                    {/* Contract Horizon */}
+                    <div className="flex items-center justify-between text-[11px] pt-1 border-t border-zinc-900">
+                      <span className="text-zinc-400 flex items-center gap-1">
+                        <Briefcase className="w-3 h-3 text-zinc-400" />
+                        Contract: <strong className={(w.contractWeeks || 52) <= 6 ? 'text-rose-400 font-bold animate-pulse' : (w.contractWeeks || 52) <= 12 ? 'text-amber-400' : 'text-zinc-200'}>{w.contractWeeks || 52} wks</strong>
+                      </span>
+                      <span className="text-emerald-400 font-bold">
+                        ${formatNumber(w.salary)}/wk
+                      </span>
                     </div>
                   </div>
 

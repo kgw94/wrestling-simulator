@@ -363,6 +363,114 @@ export const WrestlerCareerModal: React.FC<WrestlerCareerModalProps> = ({
           </div>
         ) : null}
 
+        {/* SECTION: BACKSTAGE POLITICS & CONTRACT PROFILE */}
+        {(() => {
+          const clique = (promotion.backstageCliques || []).find(c => c.memberIds.includes(wrestler.id));
+          const isLeader = clique?.leaderId === wrestler.id;
+          const activeWar = (promotion.activeBiddingWars || []).find(bw => bw.wrestlerId === wrestler.id);
+          const contractWeeks = wrestler.contractWeeks || 52;
+
+          return (
+            <div className="bg-zinc-950/80 border border-zinc-800/90 rounded-xl p-4 space-y-3 font-mono text-xs shadow-sm">
+              <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+                <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wider flex items-center gap-2">
+                  <Crown className="w-4 h-4 text-amber-400" />
+                  <span>Backstage Politics, Cliques & Contract Status</span>
+                </h3>
+                <span className="text-[11px] text-zinc-400">
+                  Salary: <strong className="text-emerald-400">${formatNumber(wrestler.salary)}/wk</strong>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Contract Lifespan */}
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>Contract Horizon</span>
+                    <Clock className="w-3 h-3 text-zinc-400" />
+                  </div>
+                  <div className={`text-base font-bold ${contractWeeks <= 6 ? 'text-rose-400 animate-pulse' : contractWeeks <= 12 ? 'text-amber-400' : 'text-zinc-200'}`}>
+                    {contractWeeks} Weeks Remaining
+                  </div>
+                  <div className="text-[10px] text-zinc-400 mt-1">
+                    {contractWeeks <= 6 ? '⚠️ Contract expiring soon! Hostile rival bids active.' : 'Secured under exclusive long-term charter.'}
+                  </div>
+                </div>
+
+                {/* Backstage Clique */}
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>Backstage Cabal</span>
+                    <Users className="w-3 h-3 text-amber-400" />
+                  </div>
+                  {clique ? (
+                    <div>
+                      <div className="text-base font-bold text-amber-300 truncate">
+                        {clique.name}
+                      </div>
+                      <div className="text-[10px] text-zinc-400 mt-0.5">
+                        {isLeader ? '👑 Coalition Leader' : '👥 Member'} • {clique.agendaType} ({clique.influence} Pwr)
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-base font-bold text-zinc-400">
+                        Independent / Neutral
+                      </div>
+                      <div className="text-[10px] text-zinc-500 mt-0.5">
+                        Does not belong to any political locker room cabal.
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Contract Perks & Clauses */}
+                <div className="p-3 bg-zinc-900 rounded-lg border border-zinc-800">
+                  <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                    <span>Special Clauses</span>
+                    <ShieldCheck className="w-3 h-3 text-sky-400" />
+                  </div>
+                  <div className="space-y-1 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400">Creative Control:</span>
+                      <strong className={wrestler.creativeControlClause ? 'text-amber-400' : 'text-zinc-500'}>
+                        {wrestler.creativeControlClause ? 'Active Veto' : 'Standard'}
+                      </strong>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400">Limited Tour Schedule:</span>
+                      <strong className={wrestler.limitedScheduleClause ? 'text-sky-400' : 'text-zinc-500'}>
+                        {wrestler.limitedScheduleClause ? '35-Date Max' : 'Full-Time'}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active Bidding War Alert Banner if present */}
+              {activeWar && (
+                <div className="bg-rose-950/40 border border-rose-500/60 p-3 rounded-lg text-xs space-y-1.5 animate-pulse">
+                  <div className="flex items-center justify-between font-bold text-rose-300">
+                    <span className="flex items-center gap-1.5">
+                      <Flame className="w-4 h-4 text-rose-400" />
+                      <span>HOSTILE CONTRACT BIDDING WAR ACTIVE:</span>
+                    </span>
+                    <span>Deadline: Week {activeWar.deadlineWeek}</span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between text-zinc-300 gap-2">
+                    <span>
+                      Leading Offer: <strong className="text-amber-300">{activeWar.leadingBidderName}</strong> • Career Priority: <strong className="text-white">"{activeWar.wrestlerPriority}"</strong>
+                    </span>
+                    <span className="text-rose-300 text-[11px]">
+                      Visit <strong>Locker Room Politics [L]</strong> to submit a counter-bid before deadline!
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* SECTION 1: CAREER WIN / LOSS RECORD & STATS */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">

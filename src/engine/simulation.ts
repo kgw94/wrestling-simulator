@@ -12,7 +12,11 @@ import {
   LockerRoomIncident,
   StorylineArc,
   Tournament,
-  TournamentMatch
+  TournamentMatch,
+  BackstageClique,
+  ContractBiddingWar,
+  ContractBid,
+  WrestlerCourtCase
 } from '../types';
 import { 
   DEFAULT_PPV_CALENDAR, 
@@ -20,8 +24,19 @@ import {
   SAMPLE_INCIDENTS_POOL,
   calculateHallOfFameScorecard
 } from '../data/customDefaults';
+import {
+  getDefaultCliquesForPromotion,
+  SAMPLE_WRESTLER_COURT_CASES,
+  generateBiddingWarForWrestler,
+  evaluateWrestlerBiddingDecision
+} from '../data/backstageDefaults';
 import { generateGMPostShowDebrief, generateGMProposal } from './gmEngine';
-import { validateMatchTitleGender, isWrestlerEligibleForTitle } from '../utils/titleUtils';
+import { 
+  validateMatchTitleGender, 
+  isWrestlerEligibleForTitle,
+  handleAutomaticTitleVacancy,
+  handleAutomaticTitleVacancyForWrestler
+} from '../utils/titleUtils';
 import { 
   resolveTournamentMatch, 
   applyTournamentCompletionEffects,
@@ -854,19 +869,19 @@ export function advanceWeekEngine(
         veteran.farewellTour.prestigeAccumulated += grandFinalePrestige;
         totalPrestigeEarnedTonight += grandFinalePrestige;
 
-        // Strip championships if still holding any
-        if (veteran.championshipIds && veteran.championshipIds.length > 0) {
-          updatedTitles.forEach(t => {
-            if (t.currentHolderIds.includes(veteran.id)) {
-              t.currentHolderIds = t.currentHolderIds.filter(id => id !== veteran.id);
-              if (t.history && t.history.length > 0 && !t.history[0].lostWeek) {
-                t.history[0].lostWeek = currentWeek;
-                t.history[0].lostYear = currentYear;
-                t.history[0].isCurrent = false;
-                t.history[0].notes = `${t.history[0].notes || ''} (Vacated upon farewell tour culmination)`;
-              }
-            }
-          });
+        // Automatically vacate championships if still holding any upon retirement
+        const farewellVacancy = handleAutomaticTitleVacancyForWrestler(
+          veteran,
+          updatedTitles,
+          updatedRoster,
+          currentWeek,
+          'retirement',
+          { currentYear, promotionName: promotion.name }
+        );
+        if (farewellVacancy.vacatedTitlesCount > 0) {
+          updatedTitles = farewellVacancy.updatedTitles;
+          updatedRoster = farewellVacancy.updatedRoster;
+          newNews.push(...farewellVacancy.newNews);
         }
 
         veteran.isRetired = true;
@@ -912,6 +927,13 @@ export function advanceWeekEngine(
       w.retirementRisk = 'Moderate';
     } else {
       w.retirementRisk = 'Low';
+    }
+
+    // Initialize or tick down contract weeks
+    if (typeof w.contractWeeks !== 'number' || isNaN(w.contractWeeks) || w.contractWeeks <= 0) {
+      w.contractWeeks = Math.max(10, 52 - Math.floor(Math.random() * 24));
+    } else {
+      w.contractWeeks = Math.max(0, w.contractWeeks - 1);
     }
   });
 
@@ -974,6 +996,19 @@ export function advanceWeekEngine(
       });
     }
   });
+
+  // 3.5 Automatic Championship Vacancy for Champions Injured > 4 Weeks
+  const injuryVacancyResult = handleAutomaticTitleVacancy(
+    updatedTitles,
+    updatedRoster,
+    currentWeek,
+    { currentYear, promotionName: promotion.name, injuryThresholdWeeks: 4 }
+  );
+  if (injuryVacancyResult.vacatedTitlesCount > 0) {
+    updatedTitles = injuryVacancyResult.updatedTitles;
+    updatedRoster = injuryVacancyResult.updatedRoster;
+    newNews.push(...injuryVacancyResult.newNews);
+  }
 
   // 4. Competitor News Generation
   const competitorStories = [
@@ -1346,27 +1381,20 @@ export function advanceWeekEngine(
         retirementReason = `Fulfilled planned retirement milestone (age ${w.age}) to pass the torch to future stars.`;
       }
 
-      // If active champion, vacate the title cleanly
+      // If active champion, vacate the title cleanly using the automatic vacancy handler
       if (isChampion) {
-        updatedTitles.forEach(t => {
-          if (t.currentHolderIds.includes(w.id)) {
-            t.currentHolderIds = t.currentHolderIds.filter(id => id !== w.id);
-            if (t.history && t.history.length > 0 && !t.history[0].lostWeek) {
-              t.history[0].lostWeek = currentWeek;
-              t.history[0].lostYear = currentYear;
-              t.history[0].isCurrent = false;
-              t.history[0].notes = `${t.history[0].notes || ''} (Vacated upon superstar retirement)`;
-            }
-            newNews.push({
-              id: `news-vacate-${Date.now()}-${t.id}`,
-              week: currentWeek,
-              category: 'Promotion',
-              importance: 'High',
-              headline: `CHAMPIONSHIP VACATED: ${t.name} Vacated as ${w.name} Retires!`,
-              details: `With ${w.name} formally announcing their retirement at age ${w.age}, the prestigious ${t.name} has been declared vacant.`
-            });
-          }
-        });
+        const retireVacancy = handleAutomaticTitleVacancyForWrestler(
+          w,
+          updatedTitles,
+          remainingActiveRoster,
+          currentWeek,
+          'retirement',
+          { currentYear, promotionName: promotion.name }
+        );
+        if (retireVacancy.vacatedTitlesCount > 0) {
+          updatedTitles = retireVacancy.updatedTitles;
+          newNews.push(...retireVacancy.newNews);
+        }
       }
 
       // Evaluate Hall of Fame Scorecard and Induction Opportunity
@@ -1419,6 +1447,272 @@ export function advanceWeekEngine(
     if (debrief.updatedGM) {
       updatedGM = debrief.updatedGM;
     }
+  }
+
+  // 9.5 Backstage Politics, Cliques, Bidding Wars & Wrestler's Court Engine
+  // A. Backstage Cliques Processing
+  let updatedCliques: BackstageClique[] = (promotion.backstageCliques && promotion.backstageCliques.length > 0)
+    ? promotion.backstageCliques.map(c => ({ ...c }))
+    : getDefaultCliquesForPromotion(promotion).map(c => ({ ...c }));
+
+  updatedCliques = updatedCliques.map(clique => {
+    const leader = remainingActiveRoster.find(w => w.id === clique.leaderId);
+    const members = remainingActiveRoster.filter(w => clique.memberIds.includes(w.id));
+    if (members.length === 0) return clique;
+
+    const bookedMembers = members.filter(m => currentShowCard.some(seg => seg.participantIds.includes(m.id)));
+    const mainEventSeg = currentShowCard[currentShowCard.length - 1];
+    const isMemberInMainEvent = mainEventSeg && members.some(m => mainEventSeg.participantIds.includes(m.id));
+
+    let influenceDelta = 0;
+    let memberMoraleDelta = 0;
+
+    if (clique.agendaType === 'Title Chasers') {
+      if (isMemberInMainEvent) {
+        influenceDelta += 2;
+        memberMoraleDelta += 4;
+        if (clique.currentDemand && !clique.currentDemand.isSatisfied) {
+          clique.currentDemand = { ...clique.currentDemand, isSatisfied: true };
+          newNews.push({
+            id: `news-clique-demand-met-${Date.now()}-${clique.id}`,
+            week: currentWeek,
+            category: 'Wrestler',
+            importance: 'Medium',
+            headline: `BACKSTAGE CONCESSION: "${clique.name}" Satisfied with Main Event Booking!`,
+            details: `Following the main event spotlight on tonight's broadcast, members of "${clique.name}" are praising management's booking vision.`
+          });
+        }
+      } else if (bookedMembers.length === 0) {
+        influenceDelta -= 1;
+        memberMoraleDelta -= 3;
+      }
+    } else if (clique.agendaType === 'Creative Autonomy') {
+      const highRatedMemberMatches = (showResult.segmentEvaluations || []).filter(evalItem => 
+        evalItem.score >= 80 && 
+        evalItem.segment.category === 'Match' && 
+        members.some(m => evalItem.segment.participantIds.includes(m.id))
+      );
+      if (highRatedMemberMatches.length > 0) {
+        influenceDelta += 2;
+        memberMoraleDelta += 5;
+      }
+    } else if (clique.agendaType === 'Company Loyalists') {
+      if (showResult.overallScore >= 75) {
+        influenceDelta += 1;
+        memberMoraleDelta += 3;
+      }
+    }
+
+    if (memberMoraleDelta !== 0) {
+      remainingActiveRoster.forEach(w => {
+        if (clique.memberIds.includes(w.id)) {
+          w.morale = Math.max(10, Math.min(100, w.morale + memberMoraleDelta));
+        }
+      });
+    }
+
+    // Dynamic political demands or consequences
+    if (!clique.currentDemand && clique.influence >= 75 && Math.random() < 0.20 && members.length >= 2) {
+      const topStar = [...members].sort((a, b) => b.overness - a.overness)[0];
+      clique.currentDemand = {
+        id: `demand-${Date.now()}-${clique.id}`,
+        description: `Demands that ${topStar.name} or a fellow clique member is booked in the main event or title picture within 3 weeks.`,
+        targetWrestlerId: topStar.id,
+        deadlineWeek: currentWeek + 3,
+        penaltyText: `-15 Morale for all ${clique.name} members and threat of locker room walkout.`
+      };
+
+      newNews.push({
+        id: `news-clique-ultimatum-${Date.now()}-${clique.id}`,
+        week: currentWeek,
+        category: 'Wrestler',
+        importance: 'High',
+        headline: `BACKSTAGE POWER PLAY: "${clique.name}" Demands Main Event Push!`,
+        details: `Backstage sources report that "${clique.name}" (led by ${leader?.name || 'Veterans'}) is flexing political clout behind the curtain, demanding marquee placement for ${topStar.name}. Review demands in Locker Room Politics!`
+      });
+    } else if (clique.currentDemand && !clique.currentDemand.isSatisfied && currentWeek >= clique.currentDemand.deadlineWeek) {
+      remainingActiveRoster.forEach(w => {
+        if (clique.memberIds.includes(w.id)) {
+          w.morale = Math.max(10, w.morale - 12);
+        }
+      });
+      clique.influence = Math.max(10, clique.influence - 10);
+      newNews.push({
+        id: `news-clique-friction-${Date.now()}-${clique.id}`,
+        week: currentWeek,
+        category: 'Wrestler',
+        importance: 'High',
+        headline: `LOCKER ROOM DISCONTENT: "${clique.name}" Furious Over Ignored Demands!`,
+        details: `Having their booking demands ignored, members of "${clique.name}" suffered severe morale hits (-12 Morale) and were heard openly airing grievances in catering.`
+      });
+      clique.currentDemand = undefined;
+    }
+
+    return {
+      ...clique,
+      influence: Math.max(10, Math.min(100, clique.influence + influenceDelta))
+    };
+  });
+
+  // B. Process Contract Bidding Wars & Impending Free Agency
+  let activeBiddingWars: ContractBiddingWar[] = (promotion.activeBiddingWars || []).map(bw => ({ ...bw }));
+  let resolvedBiddingWars: ContractBiddingWar[] = (promotion.resolvedBiddingWars || []).map(bw => ({ ...bw }));
+
+  // Check for newly expiring stars (contracts <= 6 weeks)
+  const expiringStars = remainingActiveRoster.filter(w => 
+    w.contractWeeks <= 6 && 
+    w.contractWeeks > 0 && 
+    w.push !== 'Jobber' && 
+    !activeBiddingWars.some(bw => bw.wrestlerId === w.id) &&
+    !w.isRetired &&
+    !w.isGuestStar
+  );
+
+  expiringStars.forEach(w => {
+    if (w.contractWeeks <= 3 || Math.random() < 0.35) {
+      const newWar = generateBiddingWarForWrestler(w, currentWeek, promotion);
+      activeBiddingWars.push(newWar);
+
+      newNews.push({
+        id: `news-bidding-start-${Date.now()}-${w.id}`,
+        week: currentWeek,
+        category: 'Wrestler',
+        importance: 'High',
+        headline: `BIDDING WAR ERUPTS: Rivals Target ${w.name} (${w.contractWeeks} Wks Remaining)!`,
+        details: `Rival promotions have entered aggressive multi-year contract bids for ${w.name}! Leading bidder: ${newWar.leadingBidderName}. Counter-offer in the Locker Room before the deadline!`
+      });
+    }
+  });
+
+  // Advance and Resolve Active Bidding Wars
+  let remainingActiveWars: ContractBiddingWar[] = [];
+  activeBiddingWars.forEach(war => {
+    const wrestler = remainingActiveRoster.find(w => w.id === war.wrestlerId);
+    if (!wrestler) return;
+
+    if (currentWeek >= war.deadlineWeek || wrestler.contractWeeks <= 0) {
+      const decision = evaluateWrestlerBiddingDecision(war, promotion);
+
+      if (decision.isPlayerWinner) {
+        const winningBid = decision.winnerBid;
+        wrestler.salary = winningBid.weeklySalary;
+        wrestler.contractWeeks = (wrestler.contractWeeks || 0) + winningBid.contractWeeks;
+        wrestler.morale = Math.min(100, wrestler.morale + 15);
+        wrestler.creativeControlClause = !!winningBid.perks.creativeControl;
+        wrestler.limitedScheduleClause = !!winningBid.perks.limitedSchedule;
+
+        endingBalance = Math.max(0, endingBalance - winningBid.signingBonus);
+
+        resolvedBiddingWars.unshift({
+          ...war,
+          status: 'Re-Signed',
+          decisionNotes: decision.decisionSummary
+        });
+
+        newNews.push({
+          id: `news-resign-success-${Date.now()}-${wrestler.id}`,
+          week: currentWeek,
+          category: 'Wrestler',
+          importance: 'High',
+          headline: `CONTRACT EXTENSION: ${wrestler.name} Re-Signs with ${promotion.name}!`,
+          details: decision.decisionSummary
+        });
+      } else {
+        // Superstar defects to rival promotion!
+        remainingActiveRoster = remainingActiveRoster.filter(w => w.id !== wrestler.id);
+
+        updatedTitles.forEach(t => {
+          if (t.currentHolderIds.includes(wrestler.id)) {
+            t.currentHolderIds = t.currentHolderIds.filter(id => id !== wrestler.id);
+            if (t.history && t.history.length > 0 && !t.history[0].lostWeek) {
+              t.history[0].lostWeek = currentWeek;
+              t.history[0].lostYear = currentYear;
+              t.history[0].isCurrent = false;
+              t.history[0].notes = `${t.history[0].notes || ''} (Vacated upon contract defection)`;
+            }
+            newNews.push({
+              id: `news-defection-vacate-${Date.now()}-${t.id}`,
+              week: currentWeek,
+              category: 'Promotion',
+              importance: 'High',
+              headline: `TITLE VACATED: ${t.name} Vacated as ${wrestler.name} Defects!`,
+              details: `Following their defection to ${decision.winnerBid.bidderName}, ${wrestler.name} has relinquished the ${t.name}!`
+            });
+          }
+        });
+
+        resolvedBiddingWars.unshift({
+          ...war,
+          status: 'Defected',
+          decisionNotes: decision.decisionSummary
+        });
+
+        newNews.push({
+          id: `news-defection-loss-${Date.now()}-${wrestler.id}`,
+          week: currentWeek,
+          category: 'Rival',
+          importance: 'High',
+          headline: `🚨 DEFECTION BOMBSHELL: ${wrestler.name} Jumps Ship to ${decision.winnerBid.bidderName}!`,
+          details: decision.decisionSummary
+        });
+      }
+    } else {
+      if (war.status === 'Player Countered' && Math.random() < 0.25) {
+        const rivalBid = war.bids.find(b => b.bidderType !== 'Player');
+        if (rivalBid) {
+          rivalBid.weeklySalary += 1000;
+          rivalBid.signingBonus += 10000;
+          rivalBid.totalValueScore += 25;
+          const newLeading = [...war.bids].sort((a, b) => b.totalValueScore - a.totalValueScore)[0];
+          war.leadingBidderName = newLeading.bidderName;
+
+          newNews.push({
+            id: `news-bid-escalate-${Date.now()}-${war.id}`,
+            week: currentWeek,
+            category: 'Rival',
+            importance: 'Medium',
+            headline: `BIDDING ESCALATION: ${rivalBid.bidderName} Increases Offer for ${war.wrestlerName}!`,
+            details: `${rivalBid.bidderName} has sweetened their contract package to $${rivalBid.weeklySalary}/wk with a $${rivalBid.signingBonus.toLocaleString()} bonus. Head to Locker Room Politics to counter!`
+          });
+        }
+      }
+      remainingActiveWars.push(war);
+    }
+  });
+
+  // C. Process Wrestler's Court Trials
+  let updatedCourtCases: WrestlerCourtCase[] = (promotion.wrestlerCourtCases || []).map(c => ({ ...c }));
+  let updatedResolvedCourtCases: WrestlerCourtCase[] = (promotion.resolvedCourtCases || []).map(c => ({ ...c }));
+
+  if (updatedCourtCases.length === 0 && remainingActiveRoster.length >= 4 && Math.random() < 0.12) {
+    const shuffled = [...remainingActiveRoster].sort(() => 0.5 - Math.random());
+    const defendant = shuffled[0];
+    const plaintiff = shuffled[1];
+    const judge = [...remainingActiveRoster].filter(w => w.id !== defendant.id && w.id !== plaintiff.id).sort((a, b) => b.age - a.age)[0] || shuffled[2];
+    const template = SAMPLE_WRESTLER_COURT_CASES[Math.floor(Math.random() * SAMPLE_WRESTLER_COURT_CASES.length)];
+
+    const newCase: WrestlerCourtCase = {
+      id: `court-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      week: currentWeek,
+      title: template.title,
+      defendantId: defendant.id,
+      plaintiffId: plaintiff.id,
+      judgeId: judge.id,
+      charge: template.charge,
+      plea: template.plea,
+      sentencingOptions: template.sentencingOptions,
+      resolved: false
+    };
+
+    updatedCourtCases.push(newCase);
+    newNews.push({
+      id: `news-court-convened-${Date.now()}`,
+      week: currentWeek,
+      category: 'Wrestler',
+      importance: 'Medium',
+      headline: `GAVEL BANGED: Wrestler's Court Convened: ${plaintiff.name} vs. ${defendant.name}!`,
+      details: `Presiding judge ${judge.name} has convened Wrestler's Court over allegations of: "${template.charge}". Adjudicate sentences in the Locker Room Suite!`
+    });
   }
 
   const updatedGMHistory = promotion.currentGM ? [
@@ -1781,7 +2075,12 @@ export function advanceWeekEngine(
     availableGMs: promotion.availableGMs,
     pendingGMProposal: undefined,
     gmHistory: updatedGMHistory,
-    forbiddenDoor: updatedForbiddenDoor
+    forbiddenDoor: updatedForbiddenDoor,
+    backstageCliques: updatedCliques,
+    activeBiddingWars: remainingActiveWars,
+    resolvedBiddingWars,
+    wrestlerCourtCases: updatedCourtCases,
+    resolvedCourtCases: updatedResolvedCourtCases
   };
 
   return {

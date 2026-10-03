@@ -20,7 +20,9 @@ import {
   HardDrive,
   GraduationCap,
   Split,
-  Globe
+  Globe,
+  Crown,
+  Gavel
 } from 'lucide-react';
 import { formatNumber } from '../utils/format';
 import { getResolvedTheme } from '../data/themes';
@@ -459,31 +461,57 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           </div>
         </button>
 
-        {/* Feature 4: Backstage Locker Room Politics */}
-        <button
-          type="button"
-          onClick={() => onNavigate('locker_room')}
-          className="group text-left p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-emerald-500/80 hover:bg-zinc-900/90 transition shadow-sm flex flex-col justify-between"
-        >
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-400 font-mono text-xs font-bold border border-emerald-500/40 group-hover:bg-emerald-500 group-hover:text-black transition">
-                [ L ]
-              </span>
-              <AlertTriangle className="w-5 h-5 text-zinc-500 group-hover:text-emerald-400 transition" />
-            </div>
-            <h3 className="font-bold text-white text-base font-mono group-hover:text-emerald-300 transition">
-              Locker Room Politics
-            </h3>
-            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
-              Resolve ego clashes, catering brawls, and contract disputes. Enforce discipline, deliver pep talks, and distribute bonuses.
-            </p>
-          </div>
-          <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-emerald-400">
-            <span>{(promotion.activeIncidents || []).filter(i => !i.resolved).length} Pending Incidents</span>
-            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
-          </div>
-        </button>
+        {/* Feature 4: Backstage Politics, Cliques & Contract Wars */}
+        {(() => {
+          const activeWarsCount = (promotion.activeBiddingWars || []).length;
+          const cliquesCount = (promotion.backstageCliques || []).length || 2;
+          const courtCasesCount = (promotion.wrestlerCourtCases || []).filter(c => !c.resolved).length;
+          const incidentsCount = (promotion.activeIncidents || []).filter(i => !i.resolved).length;
+
+          return (
+            <button
+              type="button"
+              onClick={() => onNavigate('locker_room')}
+              className={`group text-left p-5 rounded-xl bg-zinc-900 border transition shadow-sm flex flex-col justify-between ${
+                activeWarsCount > 0 
+                  ? 'border-amber-500/80 hover:border-amber-400 bg-amber-950/10 hover:bg-amber-950/20' 
+                  : 'border-zinc-800 hover:border-emerald-500/80 hover:bg-zinc-900/90'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className={`px-2.5 py-1 rounded font-mono text-xs font-bold border transition ${
+                    activeWarsCount > 0
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 group-hover:bg-amber-500 group-hover:text-black'
+                      : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 group-hover:bg-emerald-500 group-hover:text-black'
+                  }`}>
+                    [ L ]
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {activeWarsCount > 0 && (
+                      <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-mono font-bold animate-pulse">
+                        🔥 {activeWarsCount} Bidding War{activeWarsCount > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    <Briefcase className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 transition" />
+                  </div>
+                </div>
+                <h3 className="font-bold text-white text-base font-mono group-hover:text-amber-300 transition">
+                  Backstage Politics & Cliques
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
+                  Manage power cliques, appease or reprimand backstage cabals, adjudicate Wrestler's Court, and win hostile contract bidding wars.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-amber-400">
+                <span className="truncate">
+                  {cliquesCount} Cliques • {activeWarsCount} Bids • {courtCasesCount} Court{incidentsCount > 0 ? ` • ${incidentsCount} Incidents` : ''}
+                </span>
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition shrink-0 ml-1" />
+              </div>
+            </button>
+          );
+        })()}
 
         {/* Feature 5: Settings, Themes & Match Customizer */}
         {(() => {

@@ -798,16 +798,20 @@ export default function App() {
               onClick={() => setGameState(prev => ({ ...prev, currentView: 'locker_room' }))}
               className={`px-2.5 py-1.5 rounded transition flex items-center gap-1 font-bold ${
                 gameState.currentView === 'locker_room'
-                  ? 'bg-emerald-500 text-black shadow'
+                  ? 'bg-amber-500 text-black shadow'
                   : 'text-zinc-300 hover:text-white hover:bg-zinc-800'
               }`}
-              title="Locker Room Politics & Morale [L]"
+              title="Backstage Politics, Cliques & Contract Wars [L]"
             >
-              <HeartHandshake className="w-3.5 h-3.5 text-emerald-400" />
+              <HeartHandshake className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden lg:inline">Locker Room</span>
-              {(gameState.promotion.activeIncidents || []).filter(i => !i.resolved).length > 0 && (
+              {(gameState.promotion.activeBiddingWars || []).length > 0 ? (
+                <span className="px-1.5 py-0.2 rounded bg-rose-500 text-white text-[10px] font-bold animate-pulse">
+                  🔥 {(gameState.promotion.activeBiddingWars || []).length}
+                </span>
+              ) : (gameState.promotion.activeIncidents || []).filter(i => !i.resolved).length > 0 ? (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-              )}
+              ) : null}
             </button>
 
             <button

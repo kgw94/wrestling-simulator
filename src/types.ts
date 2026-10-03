@@ -87,6 +87,13 @@ export interface Wrestler {
   guestHomePromotionId?: string;
   guestHomePromotionName?: string;
   guestWeeksRemaining?: number;
+  // Backstage Politics & Contract Clauses
+  cliqueId?: string;
+  backstageInfluence?: number; // 0-100
+  politicalPersonality?: 'Peacemaker' | 'Egoist' | 'Politician' | 'Company Loyalist' | 'Mercenary' | 'Loner';
+  creativeControlClause?: boolean;
+  limitedScheduleClause?: boolean;
+  guaranteedPushClause?: PushLevel;
 }
 
 export interface FarewellTour {
@@ -216,6 +223,88 @@ export interface LockerRoomIncident {
   resolved: boolean;
   options: IncidentOption[];
   chosenOptionId?: string;
+}
+
+export type CliqueAgendaType = 
+  | 'Title Chasers'
+  | 'Veterans Gatekeepers'
+  | 'Creative Autonomy'
+  | 'Company Loyalists'
+  | 'Money & Merch Syndicate';
+
+export interface BackstageClique {
+  id: string;
+  name: string;
+  leaderId: string;
+  memberIds: string[];
+  influence: number; // 0-100 (Backstage political power)
+  solidarity: number; // 0-100 (How strongly they stick together)
+  agendaType: CliqueAgendaType;
+  currentDemand?: {
+    id: string;
+    description: string;
+    targetWrestlerId?: string;
+    deadlineWeek: number;
+    penaltyText: string;
+    isSatisfied?: boolean;
+  };
+  reputation: string; // e.g., "Feared backstage political operators"
+}
+
+export interface ContractBid {
+  id: string;
+  bidderType: 'Player' | 'Rival Promotion' | 'International';
+  bidderName: string; // e.g. "Apex Pro Wrestling", "Vanilla Union", "Shin-Nihon Pro Budo"
+  bidderColor?: string;
+  weeklySalary: number;
+  signingBonus: number;
+  contractWeeks: number; // e.g. 52 weeks
+  perks: {
+    creativeControl?: boolean;
+    limitedSchedule?: boolean; // fewer dates, less fatigue
+    guaranteedMainEventPush?: boolean;
+    merchRoyaltyPct?: number; // 10-30%
+    signingPerkNote?: string;
+  };
+  totalValueScore: number; // calculated appeal score
+  submittedWeek: number;
+}
+
+export interface ContractBiddingWar {
+  id: string;
+  wrestlerId: string;
+  wrestlerName: string;
+  currentSalary: number;
+  currentContractWeeksRemaining: number;
+  startingOverness: number;
+  startingMorale: number;
+  status: 'Open Bidding' | 'Player Countered' | 'Re-Signed' | 'Defected' | 'Free Agent';
+  deadlineWeek: number; // when decision is made
+  leadingBidderName: string;
+  bids: ContractBid[];
+  wrestlerPriority: 'Money & Bonuses' | 'Creative Freedom' | 'Championship Push' | 'Lighter Schedule' | 'Loyalty to Promotion';
+  decisionNotes?: string;
+}
+
+export interface WrestlerCourtCase {
+  id: string;
+  week: number;
+  title: string;
+  defendantId: string;
+  plaintiffId: string;
+  judgeId: string; // usually an elected veteran or locker room leader
+  charge: string; // e.g. "Arriving late to TV tapings", "Sandbagging during finishing move", "Eating greasy fried chicken over locker room equipment bag"
+  plea: 'Guilty' | 'Not Guilty' | 'Remorseful';
+  verdict?: 'Guilty' | 'Acquitted' | 'Mistrial';
+  sentencingOptions: {
+    id: string;
+    name: string;
+    description: string;
+    moraleEffect: string;
+    cost: number;
+  }[];
+  chosenSentenceId?: string;
+  resolved: boolean;
 }
 
 export interface Segment {
@@ -415,6 +504,8 @@ export interface StorylineArc {
   plannedWeeksDuration: number;
   currentMilestoneIndex: number;
   milestones: StorylineMilestone[];
+  plotTwists?: string[];
+  twistsAppliedCount?: number;
   notes?: string;
 }
 
@@ -485,6 +576,11 @@ export interface Promotion {
   developmentalTerritory?: DevelopmentalTerritory;
   brandSplit?: BrandSplitSettings;
   forbiddenDoor?: ForbiddenDoorState;
+  backstageCliques?: BackstageClique[];
+  activeBiddingWars?: ContractBiddingWar[];
+  resolvedBiddingWars?: ContractBiddingWar[];
+  wrestlerCourtCases?: WrestlerCourtCase[];
+  resolvedCourtCases?: WrestlerCourtCase[];
 }
 
 export type AllianceTier = 
