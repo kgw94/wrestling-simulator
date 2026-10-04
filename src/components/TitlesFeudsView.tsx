@@ -17,8 +17,17 @@ import {
   getChampionshipGender, 
   isWrestlerEligibleForTitle, 
   getChampionshipGenderBadge, 
-  filterEligibleWrestlersForTitle 
+  filterEligibleWrestlersForTitle,
+  RankedContender,
+  calculateTitleContenderRankings
 } from '../utils/titleUtils';
+import {
+  getChampionshipBeltImage,
+  generateDynamicBeltSvg,
+  generateBeltPrompt,
+  PREGENERATED_BELT_ASSETS,
+  BeltCustomizationOptions
+} from '../utils/beltImageGenerator';
 import { 
   Trophy, 
   Flame, 
@@ -43,7 +52,16 @@ import {
   Layers, 
   Users, 
   Zap,
-  BookOpen
+  BookOpen,
+  TrendingUp,
+  ListOrdered,
+  Target,
+  ArrowUpRight,
+  Activity,
+  Image,
+  Wand2,
+  Download,
+  Copy
 } from 'lucide-react';
 
 interface TitlesFeudsViewProps {
@@ -62,7 +80,16 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
   onBackToMenu
 }) => {
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'championships' | 'lineage' | 'records' | 'feuds'>('championships');
+  const [activeTab, setActiveTab] = useState<'championships' | 'history' | 'lineage' | 'rankings' | 'records' | 'feuds'>('championships');
+  const [historyViewMode, setHistoryViewMode] = useState<'single' | 'all_active'>('single');
+
+  // Title Rankings state
+  const [selectedRankingTitleId, setSelectedRankingTitleId] = useState<string>(
+    promotion.titles.find(t => !t.isRetired)?.id || promotion.titles[0]?.id || ''
+  );
+  const [rankingViewMode, setRankingViewMode] = useState<'single' | 'all_titles'>('single');
+  const [rankingSortBy, setRankingSortBy] = useState<'score' | 'streak' | 'performance' | 'win_rate'>('score');
+  const [showMethodologyInfo, setShowMethodologyInfo] = useState<boolean>(false);
 
   // Filters & selection
   const [titleFilter, setTitleFilter] = useState<'all' | 'active' | 'retired' | 'singles' | 'tag' | 'womens'>('active');
@@ -84,6 +111,21 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
     reign: ChampionshipHistoryEntry;
   } | null>(null);
 
+  // Belt Visual Studio & Image Generator State
+  const [beltStudioTitle, setBeltStudioTitle] = useState<Championship | null>(null);
+  const [studioCustomOptions, setStudioCustomOptions] = useState<BeltCustomizationOptions>({
+    plateFinish: '24K Gold',
+    strapColor: 'Classic Black',
+    plateStyle: 'Big Gold Classic',
+    gemstoneType: 'Diamonds',
+    leatherTexture: 'Smooth Nappa',
+    promotionNameText: promotion.name,
+    titleNameText: ''
+  });
+  const [generatedPreviewUrl, setGeneratedPreviewUrl] = useState<string>('');
+  const [copiedPromptNotice, setCopiedPromptNotice] = useState<boolean>(false);
+  const [saveSuccessNotice, setSaveSuccessNotice] = useState<boolean>(false);
+
   // Form State: New / Edit Title
   const [titleForm, setTitleForm] = useState<{
     id?: string;
@@ -96,6 +138,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
     isTagTeam: boolean;
     strapColor: BeltStrapColor;
     plateStyle: BeltPlateStyle;
+    imageUrl?: string;
     minWorkrateBonus: number;
     description: string;
     initialHolderId: string;
@@ -255,9 +298,120 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
     });
   }, [promotion.titles, promotion.roster, titleFilter, titleSearch]);
 
+  const activeTitles = useMemo(() => {
+    return promotion.titles.filter(t => !t.isRetired);
+  }, [promotion.titles]);
+
   const selectedTitleForLineage = useMemo(() => {
-    return promotion.titles.find(t => t.id === selectedTitleIdForLineage) || promotion.titles[0];
-  }, [promotion.titles, selectedTitleIdForLineage]);
+    return promotion.titles.find(t => t.id === selectedTitleIdForLineage) || 
+      activeTitles[0] || 
+      promotion.titles[0];
+  }, [promotion.titles, selectedTitleIdForLineage, activeTitles]);
+
+  // Helper to compute reign duration in exact days
+  const calculateReignDurationDays = (reign: ChampionshipHistoryEntry, isCurrent: boolean) => {
+    const wonW = reign.wonWeek || 1;
+    const wonY = reign.wonYear || 1;
+    const lostW = reign.lostWeek || (isCurrent ? currentWeek : wonW);
+    const lostY = reign.lostYear || (isCurrent ? currentYear : wonY);
+    const totalWeeks = Math.max(1, ((lostY - wonY) * 52) + (lostW - wonW));
+    const reignDays = totalWeeks * 7;
+    return { reignDays, totalWeeks, wonW, wonY, lostW, lostY };
+  };
+
+  // Helper to compute cumulative all-time successful defenses for any title
+  const getTitleAllTimeDefenses = (title: Championship) => {
+    const historyDefenses = (title.history || []).reduce((acc, h) => acc + (h.defenses || 0), 0);
+    const hasCurrentTrackedInHistory = (title.history || []).some(h => !h.lostWeek && h.isCurrent !== false);
+    return hasCurrentTrackedInHistory ? historyDefenses : (historyDefenses + (title.defenses || 0));
+  };
+
+  // Helper to compute championship stats (longest reign in days, average days, total defenses)
+  const getTitleReignStats = (title: Championship) => {
+    if (!title.history || title.history.length === 0) {
+      return { 
+        longestDays: 0, 
+        longestHolder: 'None', 
+        avgDays: 0, 
+        totalDefenses: title.defenses || 0,
+        reignCount: 0 
+      };
+    }
+    let maxDays = 0;
+    let maxHolder = title.history[0]?.holderNames || 'None';
+    let totalDays = 0;
+
+    title.history.forEach((reign, idx) => {
+      const isCurrent = idx === 0 && title.currentHolderIds.length > 0 && !reign.lostWeek;
+      const { reignDays } = calculateReignDurationDays(reign, isCurrent);
+      totalDays += reignDays;
+      if (reignDays > maxDays) {
+        maxDays = reignDays;
+        maxHolder = reign.holderNames;
+      }
+    });
+
+    const avgDays = Math.round(totalDays / title.history.length);
+    const totalDefenses = getTitleAllTimeDefenses(title);
+    return { 
+      longestDays: maxDays, 
+      longestHolder: maxHolder, 
+      avgDays, 
+      totalDefenses,
+      reignCount: title.history.length 
+    };
+  };
+
+  // -------------------------------------------------------------
+  // Title Contender Rankings Memos & Handlers
+  // -------------------------------------------------------------
+  const selectedRankingTitle = useMemo(() => {
+    return promotion.titles.find(t => t.id === selectedRankingTitleId) || 
+      promotion.titles.find(t => !t.isRetired) || 
+      promotion.titles[0];
+  }, [promotion.titles, selectedRankingTitleId]);
+
+  const currentTitleRankings = useMemo(() => {
+    if (!selectedRankingTitle) return [];
+    const baseRankings = calculateTitleContenderRankings(
+      selectedRankingTitle, 
+      promotion.roster, 
+      promotion.tagTeams, 
+      10
+    );
+    
+    if (rankingSortBy === 'streak') {
+      return [...baseRankings].sort((a, b) => b.winStreak - a.winStreak || b.contenderScore - a.contenderScore);
+    }
+    if (rankingSortBy === 'performance') {
+      return [...baseRankings].sort((a, b) => b.performanceRating - a.performanceRating || b.contenderScore - a.contenderScore);
+    }
+    if (rankingSortBy === 'win_rate') {
+      return [...baseRankings].sort((a, b) => b.winPercentage - a.winPercentage || b.contenderScore - a.contenderScore);
+    }
+    return baseRankings;
+  }, [selectedRankingTitle, promotion.roster, promotion.tagTeams, rankingSortBy]);
+
+  const allTitlesRankingsMap = useMemo(() => {
+    const map: Record<string, RankedContender[]> = {};
+    activeTitles.forEach(t => {
+      map[t.id] = calculateTitleContenderRankings(t, promotion.roster, promotion.tagTeams, 5);
+    });
+    return map;
+  }, [activeTitles, promotion.roster, promotion.tagTeams]);
+
+  const handleStartContenderFeud = (contender: RankedContender, title: Championship) => {
+    const champId = title.currentHolderIds[0];
+    const contenderId = contender.wrestler?.id || contender.tagTeam?.memberIds[0];
+    if (champId && contenderId) {
+      const champ = promotion.roster.find(w => w.id === champId);
+      setWrestlerAId(champId);
+      setWrestlerBId(contenderId);
+      setFeudName(`${title.name} Title Clash: ${champ?.name || 'Champion'} vs ${contender.name}`);
+      setFeudDescription(`${contender.name} has surged into top contender status with an active ${contender.winStreak}-match win streak and ${contender.performanceRating}/100 performance rating, challenging reigning champion ${champ?.name || 'Champion'} for the ${title.name}.`);
+    }
+    setIsCreatingFeud(true);
+  };
 
   // -------------------------------------------------------------
   // Title Actions: Vacate, Award, Retire, Reactivate, Delete
@@ -454,6 +608,116 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
   };
 
   // -------------------------------------------------------------
+  // Belt Visual Studio & Image Generator Handlers
+  // -------------------------------------------------------------
+  const handleOpenBeltStudio = (title: Championship) => {
+    setBeltStudioTitle(title);
+    const initialOpts: BeltCustomizationOptions = {
+      plateFinish: (title.beltVisualDetails?.plateColor as any) || (title.type === "Women's" ? 'Rose Gold' : '24K Gold'),
+      strapColor: title.strapColor || 'Classic Black',
+      plateStyle: title.plateStyle || 'Big Gold Classic',
+      gemstoneType: (title.beltVisualDetails?.gemstones as any) || (title.prestige >= 90 ? 'Emeralds' : 'Diamonds'),
+      promotionNameText: promotion.name,
+      titleNameText: title.shortName || title.name,
+      leatherTexture: (title.beltVisualDetails?.strapTexture as any) || 'Smooth Nappa',
+      styleTheme: title.beltVisualDetails?.styleTag || promotion.style
+    };
+    setStudioCustomOptions(initialOpts);
+    setGeneratedPreviewUrl(getChampionshipBeltImage(title, promotion.name, promotion.style));
+    setCopiedPromptNotice(false);
+    setSaveSuccessNotice(false);
+  };
+
+  const handleGenerateDynamicBelt = (overrideOpts?: BeltCustomizationOptions) => {
+    if (!beltStudioTitle) return;
+    const opts = overrideOpts || studioCustomOptions;
+    const dynamicSvg = generateDynamicBeltSvg(
+      beltStudioTitle,
+      opts.promotionNameText || promotion.name,
+      promotion.style,
+      opts
+    );
+    setGeneratedPreviewUrl(dynamicSvg);
+  };
+
+  const handleSaveBeltToTitle = () => {
+    if (!beltStudioTitle || !generatedPreviewUrl) return;
+
+    const promptText = generateBeltPrompt(
+      beltStudioTitle,
+      studioCustomOptions.promotionNameText || promotion.name,
+      promotion.style,
+      studioCustomOptions
+    );
+
+    const updatedTitles = promotion.titles.map(t => {
+      if (t.id === beltStudioTitle.id) {
+        return {
+          ...t,
+          strapColor: studioCustomOptions.strapColor || t.strapColor,
+          plateStyle: studioCustomOptions.plateStyle || t.plateStyle,
+          imageUrl: generatedPreviewUrl,
+          imagePrompt: promptText,
+          beltVisualDetails: {
+            plateColor: studioCustomOptions.plateFinish,
+            strapTexture: studioCustomOptions.leatherTexture,
+            gemstones: studioCustomOptions.gemstoneType,
+            styleTag: studioCustomOptions.styleTheme || promotion.style,
+            generatedDate: new Date().toLocaleDateString()
+          }
+        };
+      }
+      return t;
+    });
+
+    onUpdatePromotion({
+      ...promotion,
+      titles: updatedTitles
+    });
+
+    setSaveSuccessNotice(true);
+    setTimeout(() => setSaveSuccessNotice(false), 3000);
+  };
+
+  const handleResetToFlagshipPreset = () => {
+    if (!beltStudioTitle) return;
+    const presetAsset = PREGENERATED_BELT_ASSETS[beltStudioTitle.id];
+    if (presetAsset) {
+      setGeneratedPreviewUrl(presetAsset);
+      const updatedTitles = promotion.titles.map(t => {
+        if (t.id === beltStudioTitle.id) {
+          return {
+            ...t,
+            imageUrl: presetAsset
+          };
+        }
+        return t;
+      });
+      onUpdatePromotion({
+        ...promotion,
+        titles: updatedTitles
+      });
+      setSaveSuccessNotice(true);
+      setTimeout(() => setSaveSuccessNotice(false), 2500);
+    } else {
+      handleGenerateDynamicBelt();
+    }
+  };
+
+  const handleCopyBeltPrompt = () => {
+    if (!beltStudioTitle) return;
+    const promptText = generateBeltPrompt(
+      beltStudioTitle,
+      studioCustomOptions.promotionNameText || promotion.name,
+      promotion.style,
+      studioCustomOptions
+    );
+    navigator.clipboard?.writeText(promptText);
+    setCopiedPromptNotice(true);
+    setTimeout(() => setCopiedPromptNotice(false), 3000);
+  };
+
+  // -------------------------------------------------------------
   // Open / Save Title Customization
   // -------------------------------------------------------------
   const handleOpenCreateTitle = () => {
@@ -525,6 +789,21 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       });
     }
 
+    const initialVisual = titleForm.imageUrl || generateDynamicBeltSvg(
+      {
+        name: titleForm.name.trim(),
+        shortName: titleForm.shortName.trim(),
+        type: titleForm.type,
+        division: titleForm.division,
+        strapColor: titleForm.strapColor,
+        plateStyle: titleForm.plateStyle,
+        prestige: titleForm.prestige,
+        isTagTeam: titleForm.isTagTeam
+      },
+      promotion.name,
+      promotion.style
+    );
+
     const newChampionship: Championship = {
       id: newId,
       name: titleForm.name.trim(),
@@ -538,6 +817,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       defenses: titleForm.defenses || 0,
       strapColor: titleForm.strapColor,
       plateStyle: titleForm.plateStyle,
+      imageUrl: initialVisual,
       minWorkrateBonus: titleForm.minWorkrateBonus,
       description: titleForm.description.trim() || 'A prestigious championship forged for world-class competition.',
       history: initialHistory
@@ -577,6 +857,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       isTagTeam: !!title.isTagTeam || title.type === 'Tag Team' || title.division === 'Tag Team' || title.currentHolderIds.length >= 2 || Boolean(title.name && /tag/i.test(title.name)),
       strapColor: title.strapColor || 'Classic Black',
       plateStyle: title.plateStyle || 'Big Gold Classic',
+      imageUrl: title.imageUrl,
       minWorkrateBonus: title.minWorkrateBonus || 0,
       description: title.description || '',
       initialHolderId: title.currentHolderIds[0] || '',
@@ -655,6 +936,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
           defenses: titleForm.defenses,
           strapColor: titleForm.strapColor,
           plateStyle: titleForm.plateStyle,
+          imageUrl: titleForm.imageUrl || t.imageUrl,
           minWorkrateBonus: titleForm.minWorkrateBonus,
           description: titleForm.description.trim(),
           history
@@ -920,6 +1202,17 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
     });
   }
 
+  // Markdown format of Title Contender Rankings
+  let rankingsMarkdown = `| Championship | Rank | Contender | Win Streak | Form (Last 5) | Performance | Contender Score | Status |
+|---|---|---|---|---|---|---|---|
+`;
+  activeTitles.forEach(t => {
+    const contenders = calculateTitleContenderRankings(t, promotion.roster, promotion.tagTeams, 5);
+    contenders.forEach(c => {
+      rankingsMarkdown += `| ${t.name} | #${c.rank} | ${c.name} | ${c.winStreak}W Streak | ${c.recentForm.join('-')} | ${c.performanceRating}/100 | ${c.contenderScore} pts | ${c.statusBadge} |\n`;
+    });
+  });
+
   // -------------------------------------------------------------
   // RENDER
   // -------------------------------------------------------------
@@ -963,15 +1256,27 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('lineage')}
+              onClick={() => setActiveTab('history')}
               className={`px-3 py-1.5 rounded transition flex items-center gap-1.5 ${
-                activeTab === 'lineage'
+                activeTab === 'history' || activeTab === 'lineage'
                   ? 'bg-amber-500 text-black font-bold shadow'
                   : 'text-zinc-400 hover:text-white'
               }`}
             >
               <History className="w-3.5 h-3.5" />
-              <span>Lineage History</span>
+              <span>Championship History</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('rankings')}
+              className={`px-3 py-1.5 rounded transition flex items-center gap-1.5 ${
+                activeTab === 'rankings'
+                  ? 'bg-amber-500 text-black font-bold shadow'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Award className="w-3.5 h-3.5" />
+              <span>Title Rankings</span>
             </button>
             <button
               type="button"
@@ -1000,14 +1305,25 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
           </div>
 
           {activeTab === 'championships' && (
-            <button
-              type="button"
-              onClick={handleOpenCreateTitle}
-              className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs flex items-center gap-1.5 transition shadow"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Forge New Belt</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleOpenBeltStudio(filteredTitles[0] || promotion.titles[0])}
+                className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-amber-300 font-mono font-bold text-xs flex items-center gap-1.5 transition border border-amber-500/30 shadow"
+                title="Open Belt Visual Studio & Image Generator"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Belt Studio</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenCreateTitle}
+                className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs flex items-center gap-1.5 transition shadow"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Forge New Belt</span>
+              </button>
+            </div>
           )}
 
           {activeTab === 'feuds' && (
@@ -1032,6 +1348,16 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
         >
           <div className="text-xs text-zinc-400 font-mono">
             Feud Heat multiplies match and promo ratings by up to +12 bonus points. Build heat through promos, attacks, and title brawls!
+          </div>
+        </MarkdownTableView>
+      ) : activeTab === 'rankings' ? (
+        <MarkdownTableView
+          title="OFFICIAL CHAMPIONSHIP CONTENDER RANKINGS TABLE"
+          markdown={rankingsMarkdown}
+          defaultToMarkdown={false}
+        >
+          <div className="text-xs text-zinc-400 font-mono">
+            Contender rankings are formulated from active win streaks (consecutive wins multiplier) and in-ring match performance ratings.
           </div>
         </MarkdownTableView>
       ) : (
@@ -1131,31 +1457,44 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                     }`}
                   >
                     <div>
-                      {/* Top Belt Presentation Badge */}
-                      <div className="relative mb-3 rounded-lg overflow-hidden border border-zinc-700/80 shadow-inner">
-                        {/* Strap Background */}
-                        <div className={`h-16 w-full bg-gradient-to-r ${strapStyle.preview} flex items-center justify-between px-4 relative`}>
-                          {/* Side Plate Left */}
-                          <div className="w-8 h-10 rounded border border-amber-400/60 bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-600 shadow-sm flex items-center justify-center">
-                            <Shield className="w-4 h-4 text-amber-950" />
-                          </div>
+                      {/* Top Belt Visual Presentation Asset */}
+                      <div className="relative mb-3 rounded-lg overflow-hidden border border-zinc-700/80 bg-zinc-950 shadow-md group">
+                        <div className="relative w-full aspect-[16/9] overflow-hidden bg-black flex items-center justify-center">
+                          <img
+                            src={getChampionshipBeltImage(title, promotion.name, promotion.style)}
+                            alt={title.name}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          />
 
-                          {/* Center Medallion Plate */}
-                          <div className="relative w-20 h-14 rounded-lg border-2 border-amber-300 bg-gradient-to-b from-yellow-200 via-amber-400 to-yellow-600 shadow-md flex flex-col items-center justify-center p-1">
-                            <PlateIcon className="w-5 h-5 text-amber-950 drop-shadow" />
-                            <span className="text-[8px] font-black tracking-tighter text-amber-950 uppercase truncate max-w-[70px]">
-                              {title.shortName || 'CHAMP'}
+                          {/* Gradient lighting overlay */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/20 pointer-events-none" />
+
+                          {/* Top Badges: Plate style & Strap Color */}
+                          <div className="absolute top-2 left-2 flex items-center gap-1.5 pointer-events-none">
+                            <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-black/80 backdrop-blur-sm text-amber-400 border border-amber-500/40 flex items-center gap-1 shadow">
+                              <Sparkles className="w-2.5 h-2.5" />
+                              <span>{title.plateStyle || 'Big Gold Classic'}</span>
+                            </span>
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/70 backdrop-blur-sm text-zinc-300 border border-zinc-700">
+                              {title.strapColor || 'Classic Black'}
                             </span>
                           </div>
 
-                          {/* Side Plate Right */}
-                          <div className="w-8 h-10 rounded border border-amber-400/60 bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-600 shadow-sm flex items-center justify-center">
-                            <Shield className="w-4 h-4 text-amber-950" />
-                          </div>
+                          {/* Interactive Belt Studio Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenBeltStudio(title)}
+                            className="absolute bottom-2 right-2 px-2.5 py-1 rounded bg-amber-500/90 hover:bg-amber-400 text-black font-mono font-bold text-[10px] flex items-center gap-1.5 transition opacity-90 group-hover:opacity-100 shadow-md backdrop-blur-sm"
+                            title="Open Belt Visual Studio & Image Generator"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                            <span>Belt Studio</span>
+                          </button>
 
                           {/* Retired overlay banner */}
                           {title.isRetired && (
-                            <div className="absolute inset-0 bg-black/70 backdrop-blur-[1px] flex items-center justify-center">
+                            <div className="absolute inset-0 bg-black/75 backdrop-blur-[2px] flex items-center justify-center">
                               <span className="text-rose-400 font-mono font-bold text-xs uppercase tracking-wider px-2 py-0.5 rounded border border-rose-500/50 bg-rose-950/80">
                                 ⚰ RETIRED CHAMPIONSHIP
                               </span>
@@ -1259,11 +1598,12 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                             type="button"
                             onClick={() => {
                               setSelectedTitleIdForLineage(title.id);
-                              setActiveTab('lineage');
+                              setHistoryViewMode('single');
+                              setActiveTab('history');
                             }}
                             className="text-amber-400 hover:underline flex items-center gap-0.5"
                           >
-                            <span>View Full</span>
+                            <span>View History</span>
                             <History className="w-3 h-3" />
                           </button>
                         </div>
@@ -1293,13 +1633,38 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                           type="button"
                           onClick={() => {
                             setSelectedTitleIdForLineage(title.id);
-                            setActiveTab('lineage');
+                            setHistoryViewMode('single');
+                            setActiveTab('history');
                           }}
                           className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-amber-950 text-zinc-300 hover:text-amber-300 border border-zinc-700 flex items-center gap-1 transition"
-                          title="Inspect Historical Lineage"
+                          title="Inspect Championship History"
                         >
                           <History className="w-3 h-3" />
-                          <span>Lineage</span>
+                          <span>History</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedRankingTitleId(title.id);
+                            setRankingViewMode('single');
+                            setActiveTab('rankings');
+                          }}
+                          className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-amber-950 text-zinc-300 hover:text-amber-300 border border-zinc-700 flex items-center gap-1 transition"
+                          title="Inspect Contender Rankings & Win Streaks"
+                        >
+                          <Award className="w-3 h-3 text-amber-400" />
+                          <span>Rankings</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenBeltStudio(title)}
+                          className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-amber-950 text-amber-300 hover:text-amber-200 border border-amber-500/30 flex items-center gap-1 transition"
+                          title="Generate / Customize Belt Visual Art"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <span>Belt Art</span>
                         </button>
                       </div>
 
@@ -1483,199 +1848,1301 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       )}
 
       {/* ======================================================== */}
-      {/* TAB 2: CHAMPIONSHIP LINEAGE & HISTORY CHRONICLES         */}
+      {/* TAB 2: CHAMPIONSHIP HISTORY & LINEAGE CHRONICLES         */}
       {/* ======================================================== */}
-      {activeTab === 'lineage' && selectedTitleForLineage && (
+      {(activeTab === 'history' || (activeTab as string) === 'lineage') && (
         <div className="space-y-6">
-          {/* Title Selector Header */}
+          {/* Header & View Mode Switcher */}
           <div className="p-5 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4 font-mono">
             <div className="flex items-center gap-3">
               <span className="p-3 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                <Trophy className="w-6 h-6" />
+                <History className="w-6 h-6" />
               </span>
               <div>
-                <div className="text-xs text-zinc-500 uppercase">Lineage Timeline Archive</div>
+                <div className="text-xs text-zinc-500 uppercase">Championship History & Lineage Archive</div>
                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <span>{selectedTitleForLineage.name}</span>
-                  <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-amber-400 border border-zinc-700">
-                    Prestige {selectedTitleForLineage.prestige}/100
-                  </span>
+                  <span>{historyViewMode === 'all_active' ? 'All Active Titles Overview' : (selectedTitleForLineage?.name || 'Active Championships')}</span>
+                  {historyViewMode === 'single' && selectedTitleForLineage && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-amber-400 border border-zinc-700">
+                      Prestige {selectedTitleForLineage.prestige}/100
+                    </span>
+                  )}
                 </h3>
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <select
-                value={selectedTitleIdForLineage}
-                onChange={e => setSelectedTitleIdForLineage(e.target.value)}
-                className="bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
-              >
-                {promotion.titles.map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({t.history.length} Reigns)
-                  </option>
-                ))}
-              </select>
+              {/* View Mode Toggle */}
+              <div className="flex rounded-lg bg-zinc-950 border border-zinc-800 p-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setHistoryViewMode('single')}
+                  className={`px-3 py-1.5 rounded transition flex items-center gap-1.5 ${
+                    historyViewMode === 'single'
+                      ? 'bg-amber-500 text-black font-bold shadow'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Trophy className="w-3.5 h-3.5" />
+                  <span>Title Lineage</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryViewMode('all_active')}
+                  className={`px-3 py-1.5 rounded transition flex items-center gap-1.5 ${
+                    historyViewMode === 'all_active'
+                      ? 'bg-amber-500 text-black font-bold shadow'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>All Active Titles ({activeTitles.length})</span>
+                </button>
+              </div>
 
+              {historyViewMode === 'single' && selectedTitleForLineage && (
+                <>
+                  <select
+                    value={selectedTitleIdForLineage}
+                    onChange={e => setSelectedTitleIdForLineage(e.target.value)}
+                    className="bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
+                  >
+                    <optgroup label="Active Championships">
+                      {activeTitles.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({t.history.length} Reigns • {getTitleAllTimeDefenses(t)} Defenses)
+                        </option>
+                      ))}
+                    </optgroup>
+                    {promotion.titles.filter(t => t.isRetired).length > 0 && (
+                      <optgroup label="Retired Titles">
+                        {promotion.titles.filter(t => t.isRetired).map(t => (
+                          <option key={t.id} value={t.id}>
+                            [RETIRED] {t.name} ({t.history.length} Reigns)
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenAddReign}
+                    className="px-3 py-2 rounded bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 transition shadow"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Historical Reign</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Active Titles Carousel / Switcher Bar */}
+          {activeTitles.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin font-mono text-xs">
+              <span className="text-zinc-500 uppercase text-[10px] shrink-0 font-bold">Active Belts:</span>
+              {activeTitles.map(t => {
+                const isSelected = historyViewMode === 'single' && selectedTitleForLineage?.id === t.id;
+                const totalDefs = getTitleAllTimeDefenses(t);
+                const reigningChamp = t.currentHolderIds.length > 0
+                  ? t.currentHolderIds.map(id => promotion.roster.find(w => w.id === id)?.name || id).join(' & ')
+                  : 'VACANT';
+
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTitleIdForLineage(t.id);
+                      setHistoryViewMode('single');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg border shrink-0 transition flex items-center gap-2 ${
+                      isSelected
+                        ? 'bg-amber-500 text-black border-amber-400 font-bold shadow-md'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                    }`}
+                  >
+                    <Trophy className={`w-3.5 h-3.5 ${isSelected ? 'text-black' : 'text-amber-400'}`} />
+                    <span className="truncate max-w-[150px]">{t.name}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      isSelected ? 'bg-black/20 text-black' : 'bg-zinc-800 text-emerald-400 border border-zinc-700'
+                    }`}>
+                      {totalDefs} def
+                    </span>
+                    <span className={`text-[10px] truncate max-w-[100px] ${
+                      isSelected ? 'text-black/80' : (reigningChamp === 'VACANT' ? 'text-rose-400' : 'text-amber-400/90')
+                    }`}>
+                      • {reigningChamp}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* VIEW MODE 1: ALL ACTIVE TITLES OVERVIEW */}
+          {historyViewMode === 'all_active' && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 gap-6 font-mono">
+                {activeTitles.length === 0 ? (
+                  <div className="p-8 text-center bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400">
+                    No active championships found. Forge a new title to start tracking history!
+                  </div>
+                ) : (
+                  activeTitles.map(title => {
+                    const stats = getTitleReignStats(title);
+                    const currentHolders = title.currentHolderIds.length > 0
+                      ? title.currentHolderIds.map(id => promotion.roster.find(w => w.id === id)?.name || id).join(' & ')
+                      : 'VACANT';
+
+                    return (
+                      <div
+                        key={title.id}
+                        className="p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition space-y-4 shadow-sm"
+                      >
+                        {/* Title Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-3">
+                          <div className="flex items-center gap-3">
+                            <div
+                              onClick={() => handleOpenBeltStudio(title)}
+                              className="w-16 h-10 rounded-lg overflow-hidden border border-zinc-700 bg-zinc-950 shrink-0 shadow-sm relative group cursor-pointer"
+                              title="Click to view or customize belt visual asset"
+                            >
+                              <img
+                                src={getChampionshipBeltImage(title, promotion.name, promotion.style)}
+                                alt={title.name}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                              />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-lg font-bold text-white">{title.name}</h4>
+                                <span className="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-amber-400 border border-zinc-700">
+                                  {title.type || 'Singles'} • {title.division || 'Openweight'}
+                                </span>
+                                <span className="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                                  Prestige {title.prestige}/100
+                                </span>
+                              </div>
+                              <div className="text-xs text-zinc-400 mt-0.5">
+                                Strap: <strong className="text-zinc-300">{title.strapColor || 'Classic Black'}</strong> • Plate: <strong className="text-zinc-300">{title.plateStyle || 'Big Gold Classic'}</strong>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-start sm:self-center">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenBeltStudio(title)}
+                              className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/30 text-xs flex items-center gap-1 transition"
+                              title="Open Belt Visual Studio"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Belt Studio</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedTitleIdForLineage(title.id);
+                                setHistoryViewMode('single');
+                              }}
+                              className="px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 transition"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                              <span>Inspect Full Lineage</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Title Core Summary Banner */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
+                          <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800/80">
+                            <div className="text-zinc-500 text-[10px] uppercase">Reigning Champion</div>
+                            <div className={`text-sm font-bold mt-1 truncate ${
+                              currentHolders === 'VACANT' ? 'text-rose-400' : 'text-amber-400'
+                            }`}>
+                              {currentHolders}
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800/80">
+                            <div className="text-zinc-500 text-[10px] uppercase">Total Successful Defenses</div>
+                            <div className="text-base font-bold text-emerald-400 mt-1 flex items-center gap-1">
+                              <Shield className="w-4 h-4" />
+                              <span>{stats.totalDefenses} Defenses</span>
+                            </div>
+                            <div className="text-[10px] text-zinc-500 mt-0.5">
+                              {title.defenses} in active reign
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800/80">
+                            <div className="text-zinc-500 text-[10px] uppercase">Total Recognized Reigns</div>
+                            <div className="text-base font-bold text-white mt-1">
+                              {title.history.length} Reigns
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800/80">
+                            <div className="text-zinc-500 text-[10px] uppercase">Longest Reign (Days)</div>
+                            <div className="text-sm font-bold text-amber-300 mt-1 flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{stats.longestDays} Days</span>
+                            </div>
+                            <div className="text-[10px] text-zinc-500 truncate mt-0.5">
+                              by {stats.longestHolder}
+                            </div>
+                          </div>
+
+                          <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800/80">
+                            <div className="text-zinc-500 text-[10px] uppercase">Average Reign Duration</div>
+                            <div className="text-sm font-bold text-zinc-200 mt-1 flex items-center gap-1">
+                              <Calendar className="w-3.5 h-3.5 text-zinc-500" />
+                              <span>{stats.avgDays} Days</span>
+                            </div>
+                            <div className="text-[10px] text-zinc-500 mt-0.5">
+                              ~{Math.round(stats.avgDays / 7)} weeks
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Every Past Champion List */}
+                        <div className="space-y-2">
+                          <div className="text-xs uppercase text-zinc-400 font-bold flex items-center justify-between">
+                            <span>Past Champions & Reign Records ({title.history.length}):</span>
+                            <span className="text-[11px] text-zinc-500 font-normal">Reign Duration tracked in Days</span>
+                          </div>
+
+                          {title.history.length === 0 ? (
+                            <div className="p-4 rounded-lg bg-zinc-950 border border-dashed border-zinc-800 text-center text-xs text-zinc-500">
+                              No historical champions recorded yet for this active title.
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-zinc-800/60 rounded-lg bg-zinc-950 border border-zinc-800 overflow-hidden">
+                              {title.history.map((reign, rIdx) => {
+                                const isCurrent = rIdx === 0 && title.currentHolderIds.length > 0 && !reign.lostWeek;
+                                const { reignDays, totalWeeks, wonW, wonY, lostW, lostY } = calculateReignDurationDays(reign, isCurrent);
+                                const reignNumber = reign.reignNumber || (title.history.length - rIdx);
+
+                                return (
+                                  <div
+                                    key={reign.id || rIdx}
+                                    className={`p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition ${
+                                      isCurrent ? 'bg-amber-500/5' : 'hover:bg-zinc-900/50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <span className={`w-8 h-8 rounded flex items-center justify-center font-bold text-xs shrink-0 ${
+                                        isCurrent ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-300'
+                                      }`}>
+                                        #{reignNumber}
+                                      </span>
+
+                                      <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="font-bold text-white text-sm">
+                                            {reign.holderNames}
+                                          </span>
+                                          {isCurrent ? (
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500 text-black uppercase">
+                                              ★ Current Champion
+                                            </span>
+                                          ) : (
+                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">
+                                              Past Champion
+                                            </span>
+                                          )}
+                                          {reign.reignRating && (
+                                            <span className="text-[10px] text-amber-300">
+                                              {reign.reignRating}
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="text-[11px] text-zinc-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                                          <span>
+                                            Wk {wonW}, Yr {wonY} → {isCurrent ? 'PRESENT' : `Wk ${lostW}, Yr ${lostY}`}
+                                          </span>
+                                          {reign.eventWonAt && (
+                                            <>
+                                              <span>•</span>
+                                              <span className="text-zinc-500">Won at: {reign.eventWonAt}</span>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Stats Badges: Days & Defenses */}
+                                    <div className="flex items-center gap-2 flex-wrap sm:self-center">
+                                      {/* Duration in Days */}
+                                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold">
+                                        <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                        <span>Duration: {reignDays} Days</span>
+                                        <span className="text-zinc-500 font-normal text-[10px]">({totalWeeks} wks)</span>
+                                      </div>
+
+                                      {/* Successful Defenses */}
+                                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold">
+                                        <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                                        <span>{reign.defenses} Defenses</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* VIEW MODE 2: SINGLE CHAMPIONSHIP LINEAGE DEEP-DIVE */}
+          {historyViewMode === 'single' && selectedTitleForLineage && (() => {
+            const titleStats = getTitleReignStats(selectedTitleForLineage);
+            const currentHolders = selectedTitleForLineage.currentHolderIds.length > 0
+              ? selectedTitleForLineage.currentHolderIds
+                  .map(id => promotion.roster.find(w => w.id === id)?.name || id)
+                  .join(' & ')
+              : 'VACANT';
+
+            return (
+              <div className="space-y-6">
+                {/* Belt Visual Spotlight & Studio Launcher */}
+                <div className="p-4 rounded-xl bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 border border-zinc-800 flex flex-col md:flex-row items-center justify-between gap-4 font-mono shadow-sm">
+                  <div className="flex items-center gap-4 w-full md:w-auto">
+                    <div
+                      onClick={() => handleOpenBeltStudio(selectedTitleForLineage)}
+                      className="w-32 sm:w-44 aspect-[16/9] rounded-lg overflow-hidden border border-zinc-700 bg-zinc-950 shrink-0 shadow-md relative group cursor-pointer"
+                      title="Inspect or customize belt visual asset in Belt Studio"
+                    >
+                      <img
+                        src={getChampionshipBeltImage(selectedTitleForLineage, promotion.name, promotion.style)}
+                        alt={selectedTitleForLineage.name}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition" />
+                      <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded bg-black/80 text-[10px] text-amber-400 font-bold flex items-center gap-1">
+                        <Sparkles className="w-3 h-3" />
+                        <span>Studio</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Sanctioned Belt Artwork • {promotion.name}</div>
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2 mt-0.5">
+                        <span>{selectedTitleForLineage.name}</span>
+                      </h3>
+                      <div className="text-xs text-zinc-400 mt-1 flex items-center gap-2 flex-wrap">
+                        <span>Plate: <strong className="text-amber-300">{selectedTitleForLineage.plateStyle || 'Big Gold Classic'}</strong></span>
+                        <span>•</span>
+                        <span>Strap: <strong className="text-zinc-200">{selectedTitleForLineage.strapColor || 'Classic Black'}</strong></span>
+                        <span>•</span>
+                        <span>Style: <strong className="text-emerald-400">{promotion.style}</strong></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenBeltStudio(selectedTitleForLineage)}
+                      className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 transition shadow"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Belt Visual Studio</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Lineage Summary Banner */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 font-mono text-xs">
+                  <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                    <div className="text-zinc-500 text-[10px] uppercase">Total Recognized Reigns</div>
+                    <div className="text-lg font-bold text-white mt-0.5">{selectedTitleForLineage.history.length} Reigns</div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">Chronological Archives</div>
+                  </div>
+
+                  <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                    <div className="text-zinc-500 text-[10px] uppercase">Reigning Champion</div>
+                    <div className={`text-base font-bold mt-0.5 truncate ${
+                      currentHolders === 'VACANT' ? 'text-rose-400' : 'text-amber-400'
+                    }`}>
+                      {currentHolders}
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">
+                      {selectedTitleForLineage.defenses} defenses this reign
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                    <div className="text-zinc-500 text-[10px] uppercase">Total Successful Defenses</div>
+                    <div className="text-lg font-bold text-emerald-400 mt-0.5 flex items-center gap-1.5">
+                      <Shield className="w-4 h-4 text-emerald-400" />
+                      <span>{titleStats.totalDefenses} Defenses</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">
+                      All-Time Title Defenses
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                    <div className="text-zinc-500 text-[10px] uppercase">Longest Reign (Days)</div>
+                    <div className="text-base font-bold text-amber-300 mt-0.5 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-400" />
+                      <span>{titleStats.longestDays} Days</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-400 truncate mt-0.5">
+                      by {titleStats.longestHolder}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-lg bg-zinc-900 border border-zinc-800">
+                    <div className="text-zinc-500 text-[10px] uppercase">Average Reign Duration</div>
+                    <div className="text-base font-bold text-zinc-200 mt-0.5 flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-zinc-400" />
+                      <span>{titleStats.avgDays} Days</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5">
+                      ~{Math.round(titleStats.avgDays / 7)} Weeks
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chronological Reigns List */}
+                <div className="space-y-3 font-mono">
+                  {selectedTitleForLineage.history.length === 0 ? (
+                    <div className="text-center py-12 bg-zinc-900/40 border border-dashed border-zinc-800 rounded-xl p-8">
+                      <History className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
+                      <h4 className="text-base font-bold text-zinc-200">No History Recorded Yet</h4>
+                      <p className="text-xs text-zinc-400 max-w-md mx-auto mt-1 mb-4 font-sans">
+                        This championship has no past reigns recorded in its archives. Award the title to a superstar or backdate legendary past reigns.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleOpenAddReign}
+                        className="px-4 py-2 rounded bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs"
+                      >
+                        + Add Inaugural Historical Reign
+                      </button>
+                    </div>
+                  ) : (
+                    selectedTitleForLineage.history.map((reign, idx) => {
+                      const isCurrent = idx === 0 && selectedTitleForLineage.currentHolderIds.length > 0 && !reign.lostWeek;
+                      const reignNumber = reign.reignNumber || (selectedTitleForLineage.history.length - idx);
+                      const { reignDays, totalWeeks, wonW, wonY, lostW, lostY } = calculateReignDurationDays(reign, isCurrent);
+                      const wonPeriod = `Week ${wonW}${wonY ? `, Year ${wonY}` : ''}`;
+                      const lostPeriod = reign.lostWeek 
+                        ? `Week ${lostW}${lostY ? `, Year ${lostY}` : ''}`
+                        : (isCurrent ? 'PRESENT' : 'Concluded');
+
+                      return (
+                        <div
+                          key={reign.id || idx}
+                          className={`p-4 rounded-xl border transition flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                            isCurrent
+                              ? 'bg-amber-500/5 border-amber-500/40 shadow-sm'
+                              : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`w-12 h-12 rounded-lg flex flex-col items-center justify-center font-bold shrink-0 ${
+                              isCurrent 
+                                ? 'bg-amber-500 text-black shadow' 
+                                : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                            }`}>
+                              <span className="text-[9px] uppercase leading-none">Reign</span>
+                              <span className="text-base leading-none mt-0.5">#{reignNumber}</span>
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-bold text-white text-base">
+                                  {reign.holderNames}
+                                </h4>
+                                {isCurrent ? (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500 text-black uppercase">
+                                    ★ CURRENT CHAMPION
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                                    PAST CHAMPION
+                                  </span>
+                                )}
+                                {reign.reignRating && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-amber-300 border border-zinc-700">
+                                    {reign.reignRating}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-3 text-xs text-zinc-400 flex-wrap">
+                                <span className="flex items-center gap-1 text-zinc-300">
+                                  <Calendar className="w-3.5 h-3.5 text-zinc-500" />
+                                  {wonPeriod} → {lostPeriod}
+                                </span>
+                              </div>
+
+                              {/* Highlighted Metric Pills: Duration in Days & Successful Defenses */}
+                              <div className="flex items-center gap-2 pt-1 flex-wrap">
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-xs">
+                                  <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Duration: {reignDays} Days</span>
+                                  <span className="text-zinc-500 font-normal text-[10px]">({totalWeeks} weeks)</span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold text-xs">
+                                  <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>{reign.defenses} Successful Defenses</span>
+                                </div>
+                              </div>
+
+                              {reign.eventWonAt && (
+                                <div className="text-[11px] text-amber-400/90 font-sans mt-0.5">
+                                  Won at: <strong className="font-mono">{reign.eventWonAt}</strong>
+                                </div>
+                              )}
+
+                              {reign.notes && (
+                                <p className="text-xs text-zinc-400 font-sans mt-0.5">
+                                  {reign.notes}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Reign Actions */}
+                          <div className="flex items-center gap-1.5 self-end md:self-center shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditReign(selectedTitleForLineage.id, idx, reign)}
+                              className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition"
+                              title="Edit Historical Reign"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteReign(selectedTitleForLineage.id, idx)}
+                              className="p-1.5 rounded hover:bg-rose-950 text-zinc-500 hover:text-rose-400 transition"
+                              title="Delete Reign From History"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB: TITLE CONTENDER RANKINGS                            */}
+      {/* ======================================================== */}
+      {activeTab === 'rankings' && (
+        <div className="space-y-6 font-mono">
+          {/* Header & Controls */}
+          <div className="p-5 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="p-3 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Award className="w-6 h-6" />
+              </span>
+              <div>
+                <div className="text-xs text-zinc-500 uppercase">Division Standings & Contender Board</div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <span>
+                    {rankingViewMode === 'all_titles'
+                      ? 'All Championships Contender Matrix'
+                      : `${selectedRankingTitle?.name || 'Championship'} Rankings`}
+                  </span>
+                  {selectedRankingTitle && rankingViewMode === 'single' && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-amber-400 border border-zinc-700">
+                      Prestige {selectedRankingTitle.prestige}/100
+                    </span>
+                  )}
+                </h3>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              {/* View Mode Toggle */}
+              <div className="flex rounded-lg bg-zinc-950 border border-zinc-800 p-1">
+                <button
+                  type="button"
+                  onClick={() => setRankingViewMode('single')}
+                  className={`px-3 py-1.5 rounded transition flex items-center gap-1.5 ${
+                    rankingViewMode === 'single'
+                      ? 'bg-amber-500 text-black font-bold shadow'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Trophy className="w-3.5 h-3.5" />
+                  <span>Division Ladder</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRankingViewMode('all_titles')}
+                  className={`px-3 py-1.5 rounded transition flex items-center gap-1.5 ${
+                    rankingViewMode === 'all_titles'
+                      ? 'bg-amber-500 text-black font-bold shadow'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>All Divisions Matrix</span>
+                </button>
+              </div>
+
+              {/* Title Selector dropdown in Single Mode */}
+              {rankingViewMode === 'single' && (
+                <select
+                  value={selectedRankingTitleId}
+                  onChange={e => setSelectedRankingTitleId(e.target.value)}
+                  className="bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-white focus:outline-none focus:border-amber-500"
+                >
+                  <optgroup label="Active Championships">
+                    {activeTitles.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {promotion.titles.filter(t => t.isRetired).length > 0 && (
+                    <optgroup label="Retired Titles">
+                      {promotion.titles.filter(t => t.isRetired).map(t => (
+                        <option key={t.id} value={t.id}>
+                          [RETIRED] {t.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              )}
+
+              {/* Sort By Selector */}
+              <div className="flex items-center gap-1.5 bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1.5">
+                <span className="text-zinc-500 text-[10px] uppercase">Sort:</span>
+                <select
+                  value={rankingSortBy}
+                  onChange={e => setRankingSortBy(e.target.value as any)}
+                  className="bg-transparent text-white focus:outline-none"
+                >
+                  <option value="score">Contender Score</option>
+                  <option value="streak">Win Streak (🔥)</option>
+                  <option value="performance">Performance (★)</option>
+                  <option value="win_rate">Win % (📊)</option>
+                </select>
+              </div>
+
+              {/* Methodology Toggle */}
               <button
                 type="button"
-                onClick={handleOpenAddReign}
-                className="px-3 py-2 rounded bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs flex items-center gap-1.5 transition"
+                onClick={() => setShowMethodologyInfo(!showMethodologyInfo)}
+                className={`p-2 rounded border transition ${
+                  showMethodologyInfo 
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' 
+                    : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:text-white'
+                }`}
+                title="View Ranking Methodology & Weightings"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Historical Reign</span>
+                <BookOpen className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Lineage Summary Banner */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
-            <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-              <div className="text-zinc-500 text-[10px] uppercase">Total Recognized Reigns</div>
-              <div className="text-lg font-bold text-white mt-0.5">{selectedTitleForLineage.history.length}</div>
-            </div>
-            <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-              <div className="text-zinc-500 text-[10px] uppercase">Reigning Champion</div>
-              <div className="text-lg font-bold text-amber-400 mt-0.5 truncate">
-                {selectedTitleForLineage.currentHolderIds.length > 0
-                  ? selectedTitleForLineage.currentHolderIds
-                      .map(id => promotion.roster.find(w => w.id === id)?.name || id)
-                      .join(' & ')
-                  : 'VACANT'}
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-              <div className="text-zinc-500 text-[10px] uppercase">Active Title Defenses</div>
-              <div className="text-lg font-bold text-emerald-400 mt-0.5">
-                {selectedTitleForLineage.defenses} Defenses
-              </div>
-            </div>
-            <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
-              <div className="text-zinc-500 text-[10px] uppercase">Strap & Plate Style</div>
-              <div className="text-sm font-bold text-zinc-300 mt-1 truncate">
-                {selectedTitleForLineage.strapColor || 'Black'} • {selectedTitleForLineage.plateStyle || 'Big Gold'}
-              </div>
-            </div>
-          </div>
-
-          {/* Chronological Reigns List */}
-          <div className="space-y-3 font-mono">
-            {selectedTitleForLineage.history.length === 0 ? (
-              <div className="text-center py-12 bg-zinc-900/40 border border-dashed border-zinc-800 rounded-xl p-8">
-                <History className="w-10 h-10 text-zinc-600 mx-auto mb-3" />
-                <h4 className="text-base font-bold text-zinc-200">No History Recorded Yet</h4>
-                <p className="text-xs text-zinc-400 max-w-md mx-auto mt-1 mb-4 font-sans">
-                  This championship has no past reigns recorded in its archives. Award the title to a superstar or backdate legendary past reigns.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleOpenAddReign}
-                  className="px-4 py-2 rounded bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs"
-                >
-                  + Add Inaugural Historical Reign
-                </button>
-              </div>
-            ) : (
-              selectedTitleForLineage.history.map((reign, idx) => {
-                const isCurrent = idx === 0 && selectedTitleForLineage.currentHolderIds.length > 0 && !reign.lostWeek;
-                const reignNumber = reign.reignNumber || (selectedTitleForLineage.history.length - idx);
-                const wonPeriod = `Week ${reign.wonWeek}${reign.wonYear ? `, Year ${reign.wonYear}` : ''}`;
-                const lostPeriod = reign.lostWeek 
-                  ? `Week ${reign.lostWeek}${reign.lostYear ? `, Year ${reign.lostYear}` : ''}`
-                  : (isCurrent ? 'PRESENT' : 'Concluded');
-                const reignLength = Math.max(1, (reign.lostWeek || currentWeek) - reign.wonWeek);
-
+          {/* Quick Active Titles Carousel */}
+          {activeTitles.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin text-xs">
+              <span className="text-zinc-500 uppercase text-[10px] shrink-0 font-bold">Championships:</span>
+              {activeTitles.map(t => {
+                const isSelected = rankingViewMode === 'single' && selectedRankingTitle?.id === t.id;
+                const topContender = calculateTitleContenderRankings(t, promotion.roster, promotion.tagTeams, 1)[0];
                 return (
-                  <div
-                    key={reign.id || idx}
-                    className={`p-4 rounded-xl border transition flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                      isCurrent
-                        ? 'bg-amber-500/5 border-amber-500/40 shadow-sm'
-                        : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRankingTitleId(t.id);
+                      setRankingViewMode('single');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg border shrink-0 transition flex items-center gap-2 ${
+                      isSelected
+                        ? 'bg-amber-500 text-black border-amber-400 font-bold shadow-md'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700'
                     }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className={`w-10 h-10 rounded-lg flex flex-col items-center justify-center font-bold shrink-0 ${
-                        isCurrent 
-                          ? 'bg-amber-500 text-black shadow' 
-                          : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                    <Trophy className={`w-3.5 h-3.5 ${isSelected ? 'text-black' : 'text-amber-400'}`} />
+                    <span className="truncate max-w-[140px]">{t.name}</span>
+                    {topContender && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded truncate max-w-[130px] ${
+                        isSelected ? 'bg-black/20 text-black font-mono' : 'bg-zinc-800 text-amber-300 border border-zinc-700'
                       }`}>
-                        <span className="text-[9px] uppercase leading-none">Reign</span>
-                        <span className="text-sm leading-none mt-0.5">#{reignNumber}</span>
-                      </div>
+                        #1: {topContender.name} ({topContender.winStreak}W)
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-bold text-white text-base">
-                            {reign.holderNames}
-                          </h4>
-                          {isCurrent && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500 text-black uppercase">
-                              ★ CURRENT CHAMPION
-                            </span>
-                          )}
-                          {reign.reignRating && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 text-amber-300 border border-zinc-700">
-                              {reign.reignRating}
-                            </span>
-                          )}
-                        </div>
+          {/* Ranking Methodology Explanation Panel */}
+          {showMethodologyInfo && (
+            <div className="p-4 rounded-xl bg-zinc-950 border border-amber-500/30 text-xs space-y-3">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                <span className="font-bold text-amber-400 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  Official Contender Ranking Algorithm & Weighting Formula
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowMethodologyInfo(false)}
+                  className="text-zinc-500 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-zinc-300 font-sans">
+                <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                  <div className="font-mono text-amber-400 font-bold text-xs">🔥 Win Streak (30%)</div>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Consecutive match victories award up to 30 pts. A streak of 3+ consecutive wins unlocks surge momentum toward mandatory title status.
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                  <div className="font-mono text-emerald-400 font-bold text-xs">⭐ Match Performance (35%)</div>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Calculated from in-ring workrate, stamina execution, and televised match quality ratings. Ring generals rise rapidly.
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                  <div className="font-mono text-sky-400 font-bold text-xs">📊 Win Percentage (20%)</div>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Career and division winning records reward consistent winners and penalize recurring broadcast losses.
+                  </p>
+                </div>
+                <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+                  <div className="font-mono text-purple-400 font-bold text-xs">⚡ Star Power & Overness (15%)</div>
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Fan overness and charisma factor into championship readiness and marquee stadium attraction potential.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
-                        <div className="flex items-center gap-3 text-xs text-zinc-400 flex-wrap">
-                          <span className="flex items-center gap-1 text-zinc-300">
-                            <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-                            {wonPeriod} → {lostPeriod}
-                          </span>
-                          <span>•</span>
-                          <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-                            <Shield className="w-3.5 h-3.5" />
-                            {reign.defenses} Successful Defenses
-                          </span>
-                          <span>•</span>
-                          <span className="text-zinc-500">
-                            Duration: ~{reignLength} Weeks
-                          </span>
-                        </div>
+          {/* VIEW MODE 1: ALL CHAMPIONSHIPS CONTENDER MATRIX */}
+          {rankingViewMode === 'all_titles' && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {activeTitles.length === 0 ? (
+                  <div className="col-span-2 p-8 text-center bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400">
+                    No active championships found.
+                  </div>
+                ) : (
+                  activeTitles.map(title => {
+                    const contenders = allTitlesRankingsMap[title.id] || [];
+                    const holders = title.currentHolderIds
+                      .map(id => promotion.roster.find(w => w.id === id))
+                      .filter(Boolean) as Wrestler[];
+                    const championName = holders.length > 0
+                      ? holders.map(h => h.name).join(' & ')
+                      : 'VACANT';
 
-                        {reign.eventWonAt && (
-                          <div className="text-[11px] text-amber-400/90 font-sans">
-                            Won at: <strong className="font-mono">{reign.eventWonAt}</strong>
+                    return (
+                      <div
+                        key={title.id}
+                        className="p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition space-y-4 shadow-sm"
+                      >
+                        {/* Title Header */}
+                        <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                          <div className="flex items-center gap-3">
+                            <div
+                              onClick={() => handleOpenBeltStudio(title)}
+                              className="w-14 h-9 rounded-md overflow-hidden border border-zinc-700 bg-zinc-950 shrink-0 shadow-sm relative group cursor-pointer"
+                              title="Click to view or customize belt visual asset"
+                            >
+                              <img
+                                src={getChampionshipBeltImage(title, promotion.name, promotion.style)}
+                                alt={title.name}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover transition-transform group-hover:scale-110"
+                              />
+                            </div>
+                            <div>
+                              <h4 className="text-base font-bold text-white">{title.name}</h4>
+                              <div className="text-xs text-zinc-400 mt-0.5">
+                                Reigning: <strong className={championName === 'VACANT' ? 'text-rose-400' : 'text-amber-300'}>{championName}</strong>
+                                {championName !== 'VACANT' && ` • ${title.defenses} def`}
+                              </div>
+                            </div>
                           </div>
-                        )}
 
-                        {reign.notes && (
-                          <p className="text-xs text-zinc-400 font-sans mt-0.5">
-                            {reign.notes}
-                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedRankingTitleId(title.id);
+                              setRankingViewMode('single');
+                            }}
+                            className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-amber-950 text-zinc-300 hover:text-amber-300 border border-zinc-700 text-xs flex items-center gap-1 transition"
+                          >
+                            <span>Full Ladder</span>
+                            <ArrowUpRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Top 5 Contenders Quick Board */}
+                        <div className="space-y-2">
+                          {contenders.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-zinc-500 bg-zinc-950 rounded-lg border border-dashed border-zinc-800">
+                              No eligible contenders currently ranked for this title.
+                            </div>
+                          ) : (
+                            contenders.map((c, cIdx) => (
+                              <div
+                                key={cIdx}
+                                className={`p-2.5 rounded-lg border flex items-center justify-between gap-3 text-xs transition ${
+                                  cIdx === 0
+                                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-200'
+                                    : 'bg-zinc-950 border-zinc-800/80 text-zinc-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span className={`w-6 h-6 rounded flex items-center justify-center font-bold text-xs shrink-0 ${
+                                    cIdx === 0
+                                      ? 'bg-amber-500 text-black font-black'
+                                      : cIdx === 1
+                                      ? 'bg-zinc-300 text-black'
+                                      : cIdx === 2
+                                      ? 'bg-amber-700 text-white'
+                                      : 'bg-zinc-800 text-zinc-400'
+                                  }`}>
+                                    #{c.rank}
+                                  </span>
+
+                                  <div className="truncate">
+                                    <div className="font-bold truncate text-white flex items-center gap-1.5">
+                                      <span>{c.name}</span>
+                                      {cIdx === 0 && (
+                                        <span className="text-[9px] px-1 rounded bg-amber-500 text-black font-bold uppercase">
+                                          #1
+                                        </span>
+                                      )}
+                                      {c.isInjured && (
+                                        <span className="text-[9px] px-1 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                          Injured
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-zinc-400 flex items-center gap-2 mt-0.5">
+                                      <span className="text-zinc-500">{c.recordDisplay}</span>
+                                      <span>•</span>
+                                      <span className="text-emerald-400">{c.performanceRating} Perf</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Win Streak & Contender Score */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    c.winStreak >= 3
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                      : c.winStreak >= 1
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                      : 'bg-zinc-800 text-zinc-400'
+                                  }`}>
+                                    {c.winStreak > 0 ? `🔥 ${c.winStreak}W` : '0W'}
+                                  </span>
+
+                                  <span className="font-bold text-xs text-amber-400">
+                                    {c.contenderScore} pts
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* VIEW MODE 2: SINGLE DIVISION LADDER */}
+          {rankingViewMode === 'single' && selectedRankingTitle && (() => {
+            const currentHolders = selectedRankingTitle.currentHolderIds
+              .map(id => promotion.roster.find(w => w.id === id))
+              .filter(Boolean) as Wrestler[];
+            const championName = currentHolders.length > 0
+              ? currentHolders.map(h => h.name).join(' & ')
+              : 'VACANT';
+            const topContender = currentTitleRankings[0];
+
+            return (
+              <div className="space-y-6">
+                {/* Title & Reigning Champion Spotlight Card */}
+                <div className="p-5 rounded-xl bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5">
+                    <div
+                      onClick={() => handleOpenBeltStudio(selectedRankingTitle)}
+                      className="w-24 sm:w-28 aspect-[16/9] rounded-lg overflow-hidden border border-zinc-700 bg-zinc-950 shrink-0 shadow-md relative group cursor-pointer"
+                      title="Click to view or customize belt visual asset"
+                    >
+                      <img
+                        src={getChampionshipBeltImage(selectedRankingTitle, promotion.name, promotion.style)}
+                        alt={selectedRankingTitle.name}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-zinc-500 uppercase">Division Championship:</span>
+                        <h4 className="text-xl font-bold text-white">{selectedRankingTitle.name}</h4>
+                        <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-amber-300 border border-zinc-700">
+                          Prestige {selectedRankingTitle.prestige}/100
+                        </span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                          {selectedRankingTitle.division || 'Openweight'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-xs text-zinc-300 mt-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-zinc-500">Champion:</span>
+                          <span className={`font-bold ${championName === 'VACANT' ? 'text-rose-400' : 'text-amber-400'}`}>
+                            {championName}
+                          </span>
+                        </div>
+
+                        {championName !== 'VACANT' && (
+                          <>
+                            <span>•</span>
+                            <div className="flex items-center gap-1 text-emerald-400">
+                              <Shield className="w-3.5 h-3.5" />
+                              <span>{selectedRankingTitle.defenses} Defenses</span>
+                            </div>
+                            <span>•</span>
+                            <div className="flex items-center gap-1 text-zinc-400">
+                              <span>Belt: {selectedRankingTitle.strapColor || 'Black'} / {selectedRankingTitle.plateStyle || 'Big Gold'}</span>
+                            </div>
+                          </>
                         )}
                       </div>
-                    </div>
-
-                    {/* Reign Actions */}
-                    <div className="flex items-center gap-1.5 self-end md:self-center shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditReign(selectedTitleForLineage.id, idx, reign)}
-                        className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition"
-                        title="Edit Historical Reign"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteReign(selectedTitleForLineage.id, idx)}
-                        className="p-1.5 rounded hover:bg-rose-950 text-zinc-500 hover:text-rose-400 transition"
-                        title="Delete Reign From History"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
                   </div>
-                );
-              })
-            )}
-          </div>
+
+                  {/* Summary Metric Pills */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-center shrink-0">
+                    <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800">
+                      <div className="text-[10px] text-zinc-500 uppercase">Ranked Contenders</div>
+                      <div className="text-base font-bold text-white mt-0.5">{currentTitleRankings.length}</div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800">
+                      <div className="text-[10px] text-zinc-500 uppercase">#1 Contender Streak</div>
+                      <div className="text-base font-bold text-amber-400 mt-0.5">
+                        {topContender ? `${topContender.winStreak}W` : 'None'}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800 col-span-2 sm:col-span-1">
+                      <div className="text-[10px] text-zinc-500 uppercase">Division Quality</div>
+                      <div className="text-base font-bold text-emerald-400 mt-0.5">
+                        {currentTitleRankings.length > 0 
+                          ? Math.round(currentTitleRankings.reduce((acc, c) => acc + c.performanceRating, 0) / currentTitleRankings.length)
+                          : 75}/100
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* FEATURED: #1 MANDATORY CONTENDER HERO SPOTLIGHT */}
+                {topContender && (
+                  <div className="p-5 rounded-xl bg-gradient-to-r from-amber-500/15 via-zinc-900 to-zinc-900 border-2 border-amber-500/50 shadow-lg space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="w-12 h-12 rounded-xl bg-amber-500 text-black flex flex-col items-center justify-center font-black shadow-md shrink-0">
+                          <span className="text-[9px] uppercase leading-none">RANK</span>
+                          <span className="text-lg leading-none mt-0.5">#1</span>
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black px-2 py-0.5 rounded bg-amber-500 text-black uppercase tracking-wider">
+                              ★ MANDATORY #1 CONTENDER
+                            </span>
+                            <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-amber-300 border border-zinc-700">
+                              Contender Score: {topContender.contenderScore} pts
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded border ${
+                              topContender.momentum === 'Surging'
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            }`}>
+                              Momentum: {topContender.momentum}
+                            </span>
+                          </div>
+                          <h3 className="text-2xl font-bold text-white mt-1 flex items-center gap-2">
+                            <span>{topContender.name}</span>
+                            {topContender.nickname && (
+                              <span className="text-sm font-normal text-zinc-400">"{topContender.nickname}"</span>
+                            )}
+                          </h3>
+                        </div>
+                      </div>
+
+                      {/* Direct Booking & Feud Trigger Action */}
+                      <div className="flex items-center gap-2">
+                        {championName !== 'VACANT' && (
+                          <button
+                            type="button"
+                            onClick={() => handleStartContenderFeud(topContender, selectedRankingTitle)}
+                            className="px-3.5 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 text-black font-bold text-xs flex items-center gap-1.5 transition shadow"
+                          >
+                            <Flame className="w-4 h-4" />
+                            <span>Ignite Championship Feud</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Stats & Form Showcase */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      {/* Active Win Streak */}
+                      <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800">
+                        <div className="text-zinc-500 text-[10px] uppercase font-bold">Active Win Streak</div>
+                        <div className="text-lg font-black text-amber-400 mt-0.5 flex items-center gap-1.5">
+                          <Flame className="w-4 h-4 text-amber-400" />
+                          <span>{topContender.winStreak}-Match Streak</span>
+                        </div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">
+                          Streak Points: +{topContender.breakdown.streakPoints}
+                        </div>
+                      </div>
+
+                      {/* In-Ring Performance Rating */}
+                      <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800">
+                        <div className="text-zinc-500 text-[10px] uppercase font-bold">Performance Rating</div>
+                        <div className="text-lg font-black text-emerald-400 mt-0.5 flex items-center gap-1.5">
+                          <Star className="w-4 h-4 text-emerald-400" />
+                          <span>{topContender.performanceRating}/100</span>
+                        </div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">
+                          Perf Points: +{topContender.breakdown.performancePoints}
+                        </div>
+                      </div>
+
+                      {/* Recent Form Last 5 */}
+                      <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800">
+                        <div className="text-zinc-500 text-[10px] uppercase font-bold">Recent Form (Last 5)</div>
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          {topContender.recentForm.map((result, rI) => (
+                            <span
+                              key={rI}
+                              className={`w-6 h-6 rounded flex items-center justify-center font-bold text-xs ${
+                                result === 'W'
+                                  ? 'bg-emerald-500 text-black'
+                                  : result === 'L'
+                                  ? 'bg-rose-500 text-white'
+                                  : 'bg-zinc-700 text-zinc-200'
+                              }`}
+                            >
+                              {result}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="text-[10px] text-zinc-400 mt-1">
+                          Record: {topContender.recordDisplay}
+                        </div>
+                      </div>
+
+                      {/* Star Power & Style */}
+                      <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800">
+                        <div className="text-zinc-500 text-[10px] uppercase font-bold">Division Profile</div>
+                        <div className="text-sm font-bold text-white mt-1">
+                          {topContender.style || 'Technician'} • {topContender.alignment || 'Face'}
+                        </div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">
+                          Overness: {topContender.overness}/100 • Push: {topContender.push || 'Upper Midcard'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Booker Recommendation Banner */}
+                    <div className="p-3 rounded-lg bg-zinc-950/80 border border-zinc-800 text-xs text-zinc-300 font-sans flex items-start gap-2">
+                      <Target className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-white font-mono">Head Booker Scouting Report: </strong>
+                        {topContender.recommendation}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* CONTENDERS #2 THROUGH #10 LEADERBOARD */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <span className="uppercase font-bold tracking-wider">
+                      Contender Standings #2 through #{currentTitleRankings.length}
+                    </span>
+                    <span className="text-[11px] text-zinc-500 font-normal">
+                      Rankings recalculate based on match results & show performance
+                    </span>
+                  </div>
+
+                  {currentTitleRankings.length <= 1 ? (
+                    <div className="p-6 text-center text-xs text-zinc-500 bg-zinc-900 border border-dashed border-zinc-800 rounded-xl">
+                      No additional ranked contenders in this division ladder yet. Book more wrestlers in televised matches to populate rankings!
+                    </div>
+                  ) : (
+                    currentTitleRankings.slice(1).map((contender) => {
+                      return (
+                        <div
+                          key={contender.rank}
+                          className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm"
+                        >
+                          <div className="flex items-start gap-3.5">
+                            {/* Rank Badge */}
+                            <div className={`w-10 h-10 rounded-lg flex flex-col items-center justify-center font-bold shrink-0 ${
+                              contender.rank === 2
+                                ? 'bg-zinc-200 text-black shadow'
+                                : contender.rank === 3
+                                ? 'bg-amber-800 text-white shadow'
+                                : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                            }`}>
+                              <span className="text-[8px] uppercase leading-none">RANK</span>
+                              <span className="text-sm leading-none mt-0.5">#{contender.rank}</span>
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-bold text-white text-base">
+                                  {contender.name}
+                                </h4>
+                                {contender.nickname && (
+                                  <span className="text-xs text-zinc-400 font-sans">
+                                    "{contender.nickname}"
+                                  </span>
+                                )}
+                                <span className={`text-[10px] px-2 py-0.5 rounded border ${
+                                  contender.rank <= 3
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                }`}>
+                                  {contender.statusBadge}
+                                </span>
+                                {contender.isInjured && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                    {contender.injuryNotice || 'Injured'}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-3 text-xs text-zinc-400 flex-wrap">
+                                <span>Record: <strong className="text-zinc-200">{contender.recordDisplay}</strong> ({contender.winPercentage}%)</span>
+                                <span>•</span>
+                                <span>Style: <strong className="text-zinc-200">{contender.style || 'Technician'}</strong></span>
+                                <span>•</span>
+                                <span>Alignment: <strong className={contender.alignment === 'Face' ? 'text-sky-400' : 'text-rose-400'}>{contender.alignment || 'Face'}</strong></span>
+                                <span>•</span>
+                                <span>Push: <strong className="text-zinc-300">{contender.push || 'Midcard'}</strong></span>
+                              </div>
+
+                              {/* Performance & Recommendation snippet */}
+                              <div className="text-[11px] text-zinc-400 font-sans mt-0.5">
+                                {contender.recommendation}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Stats Badges: Streak, Form & Score */}
+                          <div className="flex items-center gap-3 flex-wrap self-end md:self-center shrink-0">
+                            {/* Win Streak Badge */}
+                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-zinc-950 border border-zinc-800 text-xs">
+                              <span className="text-zinc-500 text-[10px] uppercase font-bold">Streak:</span>
+                              <span className={`font-bold flex items-center gap-1 ${
+                                contender.winStreak >= 3 ? 'text-amber-400' : contender.winStreak >= 1 ? 'text-emerald-400' : 'text-zinc-500'
+                              }`}>
+                                {contender.winStreak > 0 ? (
+                                  <>
+                                    <Flame className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>{contender.winStreak}W</span>
+                                  </>
+                                ) : (
+                                  <span>0W</span>
+                                )}
+                              </span>
+                            </div>
+
+                            {/* Recent Form sequence */}
+                            <div className="flex items-center gap-1 bg-zinc-950 px-2 py-1 rounded border border-zinc-800">
+                              <span className="text-zinc-500 text-[10px] uppercase mr-1">Form:</span>
+                              {contender.recentForm.map((f, fIdx) => (
+                                <span
+                                  key={fIdx}
+                                  className={`w-4 h-4 rounded text-[9px] flex items-center justify-center font-bold ${
+                                    f === 'W'
+                                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                      : f === 'L'
+                                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                                      : 'bg-zinc-800 text-zinc-400'
+                                  }`}
+                                >
+                                  {f}
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* Performance Rating */}
+                            <div className="flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-950 border border-zinc-800 text-xs">
+                              <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-emerald-300 font-bold">{contender.performanceRating}</span>
+                              <span className="text-zinc-500 text-[10px]">Perf</span>
+                            </div>
+
+                            {/* Contender Score */}
+                            <div className="flex flex-col items-end">
+                              <div className="text-base font-black text-amber-400">
+                                {contender.contenderScore} <span className="text-[10px] font-normal text-zinc-500">pts</span>
+                              </div>
+                              <div className="text-[9px] text-zinc-500">
+                                {contender.momentum}
+                              </div>
+                            </div>
+
+                            {/* Quick Action: Start Feud */}
+                            {championName !== 'VACANT' && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartContenderFeud(contender, selectedRankingTitle)}
+                                className="p-2 rounded bg-zinc-800 hover:bg-orange-950 text-zinc-400 hover:text-orange-400 border border-zinc-700 transition"
+                                title={`Ignite Feud: ${championName} vs ${contender.name}`}
+                              >
+                                <Flame className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -1917,24 +3384,30 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
               </div>
             </div>
 
-            {/* Live Belt Visual Preview */}
+            {/* Live Dynamic Belt Visual Asset Preview */}
             <div>
-              <label className="block text-zinc-400 mb-1">Belt Aesthetic Preview:</label>
-              <div className="rounded-lg overflow-hidden border border-zinc-700 shadow-md">
-                <div className={`h-16 w-full bg-gradient-to-r ${getStrapColorStyle(titleForm.strapColor).preview} flex items-center justify-between px-6 relative`}>
-                  <div className="w-8 h-10 rounded border border-amber-400/60 bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-600 flex items-center justify-center shadow">
-                    <Shield className="w-4 h-4 text-amber-950" />
-                  </div>
-                  <div className="w-24 h-14 rounded-lg border-2 border-amber-300 bg-gradient-to-b from-yellow-200 via-amber-400 to-yellow-600 flex flex-col items-center justify-center shadow-lg p-1">
-                    <Trophy className="w-5 h-5 text-amber-950 drop-shadow" />
-                    <span className="text-[9px] font-black text-amber-950 uppercase truncate max-w-[85px]">
-                      {titleForm.shortName || titleForm.name || 'WORLD'}
-                    </span>
-                  </div>
-                  <div className="w-8 h-10 rounded border border-amber-400/60 bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-600 flex items-center justify-center shadow">
-                    <Shield className="w-4 h-4 text-amber-950" />
-                  </div>
-                </div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-zinc-400 font-bold">Dynamic Belt Visual Asset Preview:</label>
+                <span className="text-[10px] text-amber-400 font-mono">Tuned to {promotion.name} ({promotion.style})</span>
+              </div>
+              <div className="rounded-lg overflow-hidden border border-zinc-700 bg-black aspect-[16/9] max-h-36 shadow-md flex items-center justify-center p-1">
+                <img
+                  src={generateDynamicBeltSvg(
+                    {
+                      name: titleForm.name || 'WORLD CHAMPIONSHIP',
+                      shortName: titleForm.shortName || 'CHAMP',
+                      strapColor: titleForm.strapColor,
+                      plateStyle: titleForm.plateStyle,
+                      prestige: titleForm.prestige,
+                      isTagTeam: titleForm.isTagTeam
+                    },
+                    promotion.name,
+                    promotion.style
+                  )}
+                  alt="Belt Preview"
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-contain"
+                />
               </div>
             </div>
 
@@ -2249,22 +3722,26 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
 
             {/* Live Belt Visual Preview */}
             <div>
-              <label className="block text-zinc-400 mb-1">Belt Aesthetic Preview:</label>
-              <div className="rounded-lg overflow-hidden border border-zinc-700 shadow-md">
-                <div className={`h-16 w-full bg-gradient-to-r ${getStrapColorStyle(titleForm.strapColor).preview} flex items-center justify-between px-6 relative`}>
-                  <div className="w-8 h-10 rounded border border-amber-400/60 bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-600 flex items-center justify-center shadow">
-                    <Shield className="w-4 h-4 text-amber-950" />
-                  </div>
-                  <div className="w-24 h-14 rounded-lg border-2 border-amber-300 bg-gradient-to-b from-yellow-200 via-amber-400 to-yellow-600 flex flex-col items-center justify-center shadow-lg p-1">
-                    <Trophy className="w-5 h-5 text-amber-950 drop-shadow" />
-                    <span className="text-[9px] font-black text-amber-950 uppercase truncate max-w-[85px]">
-                      {titleForm.shortName || titleForm.name}
-                    </span>
-                  </div>
-                  <div className="w-8 h-10 rounded border border-amber-400/60 bg-gradient-to-b from-amber-300 via-yellow-400 to-amber-600 flex items-center justify-center shadow">
-                    <Shield className="w-4 h-4 text-amber-950" />
-                  </div>
-                </div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-zinc-400 font-bold">Dynamic Belt Visual Asset Preview:</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleOpenBeltStudio(editingTitle);
+                  }}
+                  className="text-amber-400 hover:text-amber-300 flex items-center gap-1 font-bold text-[10px]"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Open Full Belt Studio</span>
+                </button>
+              </div>
+              <div className="rounded-lg overflow-hidden border border-zinc-700 bg-black aspect-[16/9] max-h-36 shadow-md flex items-center justify-center p-1">
+                <img
+                  src={titleForm.imageUrl || getChampionshipBeltImage(editingTitle, promotion.name, promotion.style)}
+                  alt="Belt Preview"
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-contain"
+                />
               </div>
             </div>
 
@@ -2973,6 +4450,280 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
               >
                 Ignite Rivalry
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL: BELT VISUAL STUDIO & DYNAMIC IMAGE GENERATOR     */}
+      {/* ======================================================== */}
+      {beltStudioTitle && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl p-6 space-y-5 font-mono text-xs shadow-2xl my-8">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+              <div className="flex items-center gap-3">
+                <span className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                  <Sparkles className="w-6 h-6" />
+                </span>
+                <div>
+                  <div className="text-zinc-500 text-[10px] uppercase font-bold tracking-wider">Belt Visual Studio & Image Generator</div>
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <span>{beltStudioTitle.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-amber-300 border border-zinc-700 font-normal">
+                      {promotion.name} • {promotion.style}
+                    </span>
+                  </h3>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setBeltStudioTitle(null)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Notification alert on save or copy */}
+            {saveSuccessNotice && (
+              <div className="p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>Championship visual asset successfully forged and saved to {beltStudioTitle.name}!</span>
+              </div>
+            )}
+            {copiedPromptNotice && (
+              <div className="p-3 rounded-lg bg-sky-500/20 border border-sky-500/40 text-sky-300 flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>AI image generation prompt copied to clipboard!</span>
+              </div>
+            )}
+
+            {/* Main Visual Asset Stage (16:9 Showcase) */}
+            <div className="relative rounded-xl overflow-hidden border-2 border-zinc-700 bg-black aspect-[16/9] shadow-2xl flex items-center justify-center group">
+              <img
+                src={generatedPreviewUrl || getChampionshipBeltImage(beltStudioTitle, promotion.name, promotion.style)}
+                alt={beltStudioTitle.name}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-contain"
+              />
+
+              {/* Status overlay badge */}
+              <div className="absolute top-3 left-3 flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-md bg-black/80 backdrop-blur-md text-amber-300 font-bold border border-amber-500/40 text-[11px] flex items-center gap-1.5 shadow">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>
+                    {(generatedPreviewUrl || '').startsWith('data:') 
+                      ? 'Procedural Vector Asset' 
+                      : 'AI Photorealistic Asset'}
+                  </span>
+                </span>
+                <span className="px-2.5 py-1 rounded-md bg-black/80 backdrop-blur-md text-zinc-300 border border-zinc-700 text-[11px]">
+                  {promotion.style} Style
+                </span>
+              </div>
+
+              {/* Quick Regenerate & Download Actions */}
+              <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                {PREGENERATED_BELT_ASSETS[beltStudioTitle.id] && (
+                  <button
+                    type="button"
+                    onClick={handleResetToFlagshipPreset}
+                    className="px-3 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 flex items-center gap-1.5 shadow backdrop-blur-md transition"
+                    title="Load original flagship AI generated asset"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset to Flagship Asset</span>
+                  </button>
+                )}
+                <a
+                  href={generatedPreviewUrl || getChampionshipBeltImage(beltStudioTitle, promotion.name, promotion.style)}
+                  download={`${beltStudioTitle.id}_belt_artwork.svg`}
+                  className="px-3 py-1.5 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border border-zinc-700 flex items-center gap-1.5 shadow backdrop-blur-md transition"
+                  title="Download belt artwork"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Promotion Aesthetic Influence Info Banner */}
+            <div className="p-4 rounded-xl bg-zinc-950 border border-amber-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="space-y-1">
+                <div className="font-bold text-amber-400 flex items-center gap-2">
+                  <Crown className="w-4 h-4" />
+                  <span>Promotion Style Influence: {promotion.name} ({promotion.style})</span>
+                </div>
+                <p className="text-zinc-400 font-sans text-[11px] leading-relaxed">
+                  Belt artwork is uniquely styled to match your promotion's identity. 
+                  {promotion.style.includes('Mainstream') && ' Infused with high-gloss 24K gold, diamond clusters, and prime-time television studio illumination.'}
+                  {promotion.style.includes('Strong') && ' Burnished brass and heavy steel plates with Japanese lion heraldry and battle-forged rivets.'}
+                  {promotion.style.includes('Lucha') && ' Aerodynamic eagle wings, Aztec sun calendar engravings, and vibrant multi-tone craft.'}
+                  {promotion.style.includes('Hardcore') && ' Distressed gunmetal steel, barbed wire reliefs, and industrial rivets.'}
+                  {!promotion.style.includes('Mainstream') && !promotion.style.includes('Strong') && !promotion.style.includes('Lucha') && !promotion.style.includes('Hardcore') && ' Hand-crafted bespoke detailing with multi-tiered gold relief and ornate sidebars.'}
+                </p>
+              </div>
+
+              <div className="shrink-0 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyBeltPrompt}
+                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition text-xs font-bold"
+                  title="Copy full AI generation prompt for this belt"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copy AI Prompt</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic Customization Controls Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+              {/* Plate Finish */}
+              <div>
+                <label className="block text-zinc-400 font-bold mb-1 text-[11px]">Plate Finish / Metal</label>
+                <select
+                  value={studioCustomOptions.plateFinish || '24K Gold'}
+                  onChange={e => {
+                    const newOpts = { ...studioCustomOptions, plateFinish: e.target.value as any };
+                    setStudioCustomOptions(newOpts);
+                    handleGenerateDynamicBelt(newOpts);
+                  }}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value="24K Gold">24K Solid Gold</option>
+                  <option value="Platinum White Gold">Platinum White Gold</option>
+                  <option value="Rose Gold">Regal Rose Gold</option>
+                  <option value="Antique Bronze">Antique Territory Bronze</option>
+                  <option value="Blackened Steel">Blackened Combat Steel</option>
+                </select>
+              </div>
+
+              {/* Strap Color */}
+              <div>
+                <label className="block text-zinc-400 font-bold mb-1 text-[11px]">Strap Leather Color</label>
+                <select
+                  value={studioCustomOptions.strapColor || 'Classic Black'}
+                  onChange={e => {
+                    const newOpts = { ...studioCustomOptions, strapColor: e.target.value as any };
+                    setStudioCustomOptions(newOpts);
+                    handleGenerateDynamicBelt(newOpts);
+                  }}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value="Classic Black">Classic Black</option>
+                  <option value="Pure White">Pure White</option>
+                  <option value="Crimson Red">Crimson Red</option>
+                  <option value="Midnight Blue">Midnight Blue</option>
+                  <option value="Toxic Purple">Toxic Purple</option>
+                  <option value="Emerald Green">Emerald Green</option>
+                  <option value="Championship Gold">Championship Gold</option>
+                </select>
+              </div>
+
+              {/* Plate Relief Style */}
+              <div>
+                <label className="block text-zinc-400 font-bold mb-1 text-[11px]">Plate Relief Motif</label>
+                <select
+                  value={studioCustomOptions.plateStyle || 'Big Gold Classic'}
+                  onChange={e => {
+                    const newOpts = { ...studioCustomOptions, plateStyle: e.target.value as any };
+                    setStudioCustomOptions(newOpts);
+                    handleGenerateDynamicBelt(newOpts);
+                  }}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value="Big Gold Classic">Big Gold Classic</option>
+                  <option value="Winged Globe">Winged Globe</option>
+                  <option value="Eagle Crest">Eagle Crest</option>
+                  <option value="Crown & Regal Lions">Crown & Regal Lions</option>
+                  <option value="Skull & Barbed Wire">Skull & Barbed Wire</option>
+                  <option value="Modern Geometric Diamond">Modern Geometric Diamond</option>
+                  <option value="Vintage Oval Heavyweight">Vintage Oval Heavyweight</option>
+                </select>
+              </div>
+
+              {/* Gemstones */}
+              <div>
+                <label className="block text-zinc-400 font-bold mb-1 text-[11px]">Gemstone Insets</label>
+                <select
+                  value={studioCustomOptions.gemstoneType || 'Diamonds'}
+                  onChange={e => {
+                    const newOpts = { ...studioCustomOptions, gemstoneType: e.target.value as any };
+                    setStudioCustomOptions(newOpts);
+                    handleGenerateDynamicBelt(newOpts);
+                  }}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value="Diamonds">Brilliant Cut Diamonds</option>
+                  <option value="Rubies">Blood Rubies</option>
+                  <option value="Emeralds">Imperial Emeralds</option>
+                  <option value="Sapphires">Royal Sapphires</option>
+                  <option value="Amethysts">Royal Amethysts</option>
+                </select>
+              </div>
+
+              {/* Banner Text 1: Promotion Override */}
+              <div className="sm:col-span-2">
+                <label className="block text-zinc-400 font-bold mb-1 text-[11px]">Top Banner Promotion Engraving</label>
+                <input
+                  type="text"
+                  value={studioCustomOptions.promotionNameText || ''}
+                  onChange={e => {
+                    const newOpts = { ...studioCustomOptions, promotionNameText: e.target.value };
+                    setStudioCustomOptions(newOpts);
+                    handleGenerateDynamicBelt(newOpts);
+                  }}
+                  placeholder={promotion.name}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* Banner Text 2: Title Name Override */}
+              <div className="sm:col-span-2">
+                <label className="block text-zinc-400 font-bold mb-1 text-[11px]">Bottom Banner Title Engraving</label>
+                <input
+                  type="text"
+                  value={studioCustomOptions.titleNameText || ''}
+                  onChange={e => {
+                    const newOpts = { ...studioCustomOptions, titleNameText: e.target.value };
+                    setStudioCustomOptions(newOpts);
+                    handleGenerateDynamicBelt(newOpts);
+                  }}
+                  placeholder={beltStudioTitle.shortName || beltStudioTitle.name}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-zinc-800">
+              <div className="text-zinc-500 text-[11px] font-sans">
+                Saving will permanently apply this belt artwork to <strong className="text-white">{beltStudioTitle.name}</strong> across all views.
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                <button
+                  type="button"
+                  onClick={() => handleGenerateDynamicBelt()}
+                  className="px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition font-bold"
+                >
+                  <Wand2 className="w-4 h-4 text-amber-400" />
+                  <span>Regenerate Design</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveBeltToTitle}
+                  className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold flex items-center gap-1.5 transition shadow"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Save Artwork to Belt</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

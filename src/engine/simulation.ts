@@ -628,11 +628,17 @@ export function advanceWeekEngine(
       if (segment.category === 'Match' && segment.winnerId) {
         if (w.id === segment.winnerId) {
           w.wins += 1;
+          w.winStreak = (w.winStreak || 0) + 1;
+          w.recentForm = ['W', ...(w.recentForm || []).slice(0, 4)];
+          w.recentPerformance = Math.round(((w.recentPerformance ?? w.workrate) * 0.4) + (score * 0.6));
           const winBonus = score >= 75 ? 2 : 1;
           w.overness = Math.min(100, w.overness + winBonus);
           w.morale = Math.min(100, w.morale + 3);
         } else {
           w.losses += 1;
+          w.winStreak = 0;
+          w.recentForm = ['L', ...(w.recentForm || []).slice(0, 4)];
+          w.recentPerformance = Math.round(((w.recentPerformance ?? w.workrate) * 0.5) + (score * 0.5));
           // Protected finishes (DQ, distraction) soften the overness hit
           const isProtected = segment.finishType === 'Disqualification (DQ)' || segment.finishType === 'Distraction Rollup';
           if (!isProtected && score < 75) {
@@ -1439,6 +1445,24 @@ export function advanceWeekEngine(
       remainingActiveRoster.push(w);
     }
   });
+
+  // 9.4 Automatic Title Vacancy check for any newly retired superstars or champions injured > 4 weeks
+  const postRetirementVacancy = handleAutomaticTitleVacancy(
+    updatedTitles,
+    remainingActiveRoster,
+    currentWeek,
+    {
+      currentYear,
+      promotionName: promotion.name,
+      injuryThresholdWeeks: 4,
+      retiredRoster: updatedRetiredRoster
+    }
+  );
+  if (postRetirementVacancy.vacatedTitlesCount > 0) {
+    updatedTitles = postRetirementVacancy.updatedTitles;
+    remainingActiveRoster = postRetirementVacancy.updatedRoster;
+    newNews.push(...postRetirementVacancy.newNews);
+  }
 
   // Evaluate GM post-show progression
   let updatedGM = promotion.currentGM;

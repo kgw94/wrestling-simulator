@@ -470,6 +470,7 @@ export const PRESET_PROMOTIONS: Promotion[] = [
         plateStyle: 'Big Gold Classic',
         minWorkrateBonus: 6,
         description: 'The undisputed pinnacle championship of Apex Pro Wrestling, contested in high-stakes main events.',
+        imageUrl: '/src/assets/images/apw_world_belt_1791101575507.jpg',
         history: [
           { id: 'rh-apw-w1', reignNumber: 3, holderNames: 'Thunder Vance', wonWeek: 12, wonYear: 1, defenses: 5, eventWonAt: 'WrestleFest', notes: 'Clean pinfall over Damian Graves in a 35-minute classic', reignRating: '★★★★★ Classic', isCurrent: true },
           { id: 'rh-apw-w2', reignNumber: 2, holderNames: 'Damian Graves', wonWeek: 36, wonYear: 0, lostWeek: 12, lostYear: 1, defenses: 8, eventWonAt: 'Summer Carnage', notes: 'Won via brutal submission after chair strike', reignRating: '★★★★1/2 Brutal' },
@@ -490,6 +491,7 @@ export const PRESET_PROMOTIONS: Promotion[] = [
         plateStyle: 'Winged Globe',
         minWorkrateBonus: 4,
         description: 'The workhorse title of the federation, contested in explosive technical clinics.',
+        imageUrl: '/src/assets/images/apw_ic_belt_1791101587067.jpg',
         history: [
           { id: 'rh-apw-ic1', reignNumber: 2, holderNames: 'Rex Stryker', wonWeek: 18, wonYear: 1, defenses: 2, eventWonAt: 'Spring Retribution', notes: 'Knocked out Lord Sterling with knockout knee strike', reignRating: '★★★★1/4', isCurrent: true },
           { id: 'rh-apw-ic2', reignNumber: 1, holderNames: 'Lord Alistair Sterling', wonWeek: 42, wonYear: 0, lostWeek: 18, lostYear: 1, defenses: 6, eventWonAt: 'Gold Rush TV', notes: 'Captured the vacant championship via rollup', reignRating: '★★★3/4' }
@@ -509,6 +511,7 @@ export const PRESET_PROMOTIONS: Promotion[] = [
         plateStyle: 'Crown & Regal Lions',
         minWorkrateBonus: 5,
         description: 'The premier title in the women\'s division, representing elite athleticism and poise.',
+        imageUrl: '/src/assets/images/apw_women_belt_1791101597228.jpg',
         history: [
           { id: 'rh-apw-wmn1', reignNumber: 2, holderNames: 'Cassidy Rayne', wonWeek: 14, wonYear: 1, defenses: 4, eventWonAt: 'Queen of the Ring', notes: 'Decisive submission over Valkyrie Vance', reignRating: '★★★★1/2', isCurrent: true },
           { id: 'rh-apw-wmn2', reignNumber: 1, holderNames: 'Valkyrie Vance', wonWeek: 2, wonYear: 0, lostWeek: 14, lostYear: 1, defenses: 9, eventWonAt: 'Apex Genesis', notes: 'Inaugural Women Champion crowned in ladder match', reignRating: '★★★★' }
@@ -529,6 +532,7 @@ export const PRESET_PROMOTIONS: Promotion[] = [
         plateStyle: 'Eagle Crest',
         minWorkrateBonus: 3,
         description: 'Prestigious twin tag belts awarded to the most cohesive two-man combination.',
+        imageUrl: '/src/assets/images/apw_tag_belts_1791101609041.jpg',
         history: [
           { id: 'rh-apw-tag1', reignNumber: 1, holderNames: 'Marcus Cole & Kage Muramasa', wonWeek: 8, wonYear: 1, defenses: 3, eventWonAt: 'No Escape', notes: 'Won Tornado Tag Gauntlet', reignRating: '★★★★', isCurrent: true }
         ]

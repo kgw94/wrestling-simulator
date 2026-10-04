@@ -51,6 +51,9 @@ export interface Wrestler {
   wins: number;
   losses: number;
   draws: number;
+  winStreak?: number;
+  recentForm?: ('W' | 'L' | 'D')[];
+  recentPerformance?: number; // 0-100 based on recent matches and workrate
   championshipIds: string[];
   gimmick?: WrestlerGimmick;
   // Retirement and Hall of Fame tracking
@@ -448,6 +451,17 @@ export interface Championship {
   minWorkrateBonus?: number; // 0-10 bonus pts for high stakes
   brandId?: string; // exclusive to a brand ('brand_red', 'brand_blue') or undefined for dual-branded
   history: ChampionshipHistoryEntry[];
+  imageUrl?: string;
+  imagePrompt?: string;
+  beltVisualDetails?: {
+    plateColor?: string;
+    strapTexture?: string;
+    gemstones?: string;
+    centerEmblem?: string;
+    accentColor?: string;
+    generatedDate?: string;
+    styleTag?: string;
+  };
 }
 
 export interface Feud {
