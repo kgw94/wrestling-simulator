@@ -3,6 +3,9 @@ import { Promotion, WeeklyShow, DayOfWeek, BroadcastTier } from '../types';
 import { 
   WEEKLY_SHOW_TEMPLATES, 
   WeeklyShowTemplate,
+  ShowTemplateCategory,
+  DAYS_OF_WEEK,
+  generateRandomWeeklyShow,
   getPromotionWeeklyShows 
 } from '../utils/weeklyShowUtils';
 import { formatNumber } from '../utils/format';
@@ -20,7 +23,9 @@ import {
   DollarSign, 
   Radio, 
   Layers, 
-  AlertCircle 
+  AlertCircle,
+  Copy,
+  Shuffle
 } from 'lucide-react';
 
 interface WeeklyShowsSettingsViewProps {
@@ -38,6 +43,7 @@ export const WeeklyShowsSettingsView: React.FC<WeeklyShowsSettingsViewProps> = (
 }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingShowId, setEditingShowId] = useState<string | null>(null);
+  const [templateCategory, setTemplateCategory] = useState<ShowTemplateCategory>('All');
 
   const [formData, setFormData] = useState<WeeklyShow>({
     id: '',
@@ -52,12 +58,13 @@ export const WeeklyShowsSettingsView: React.FC<WeeklyShowsSettingsViewProps> = (
     description: ''
   });
 
-  const handleOpenAddForm = () => {
+  const handleOpenAddForm = (defaultDay?: DayOfWeek) => {
     setEditingShowId(null);
+    const day = defaultDay || 'Saturday';
     setFormData({
       id: `show-${Date.now()}`,
       name: `${promotion.shortName || promotion.name} Velocity`,
-      dayOfWeek: 'Saturday',
+      dayOfWeek: day,
       tvNetwork: 'USA Action Sports',
       durationMinutes: 60,
       broadcastTier: 'Cable Prime-Time',
@@ -67,6 +74,28 @@ export const WeeklyShowsSettingsView: React.FC<WeeklyShowsSettingsViewProps> = (
       description: 'Secondary weekly showcase for midcard rivalries, rising prospects, and workrate clinic matches.'
     });
     setIsFormOpen(true);
+  };
+
+  const handleRollRandomShow = () => {
+    const randomDraft = generateRandomWeeklyShow(promotion);
+    setFormData(prev => ({
+      ...prev,
+      ...randomDraft,
+      id: prev.id || `show-${Date.now()}`
+    }));
+    showNotification('Rolled a new creative show concept!');
+  };
+
+  const handleDuplicateShow = (show: WeeklyShow) => {
+    const newShow: WeeklyShow = {
+      ...show,
+      id: `show-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: `${show.name} (Encore / B-Cast)`,
+      isPrimary: false
+    };
+    const updated = [...weeklyShows, newShow];
+    onUpdateWeeklyShows(updated);
+    showNotification(`Cloned "${show.name}" as "${newShow.name}"!`);
   };
 
   const handleOpenEditForm = (show: WeeklyShow) => {
@@ -149,6 +178,10 @@ export const WeeklyShowsSettingsView: React.FC<WeeklyShowsSettingsViewProps> = (
     showNotification(`Removed "${showToDelete?.name}" from schedule.`);
   };
 
+  const filteredTemplates = templateCategory === 'All' 
+    ? WEEKLY_SHOW_TEMPLATES 
+    : WEEKLY_SHOW_TEMPLATES.filter(t => t.category === templateCategory);
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -166,28 +199,137 @@ export const WeeklyShowsSettingsView: React.FC<WeeklyShowsSettingsViewProps> = (
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenAddForm}
-          className="px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs flex items-center gap-1.5 transition shadow self-start md:self-center shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Weekly Show</span>
-        </button>
+        <div className="flex items-center gap-2 self-start md:self-center shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              const draft = generateRandomWeeklyShow(promotion);
+              setEditingShowId(null);
+              setFormData({
+                id: `show-${Date.now()}`,
+                name: draft.name || `${promotion.shortName} Live`,
+                dayOfWeek: draft.dayOfWeek || 'Tuesday',
+                tvNetwork: draft.tvNetwork || 'Prime Cable Network',
+                durationMinutes: draft.durationMinutes || 60,
+                broadcastTier: draft.broadcastTier || 'Cable Prime-Time',
+                productionCostWeekly: draft.productionCostWeekly || 25000,
+                minNetworkRating: draft.minNetworkRating || 55,
+                isPrimary: false,
+                description: draft.description || ''
+              });
+              setIsFormOpen(true);
+            }}
+            className="px-3.5 py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono font-bold text-xs flex items-center gap-1.5 transition border border-zinc-700"
+            title="Roll an inspirational random show concept"
+          >
+            <Shuffle className="w-3.5 h-3.5 text-amber-400" />
+            <span>Random Concept</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenAddForm()}
+            className="px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs flex items-center gap-1.5 transition shadow"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Weekly Show</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 7-Day Broadcast Week Visualizer Strip */}
+      <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-4 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-mono text-xs font-bold text-zinc-300 uppercase tracking-wider">
+            <Calendar className="w-4 h-4 text-amber-400" />
+            <span>7-Day Broadcast Programming Week</span>
+          </div>
+          <span className="text-[11px] text-zinc-500 font-mono">Click any open day to add a show</span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          {DAYS_OF_WEEK.map((day) => {
+            const dayShows = weeklyShows.filter(s => (s.dayOfWeek || '').toLowerCase() === day.toLowerCase());
+            const hasShow = dayShows.length > 0;
+
+            return (
+              <div
+                key={day}
+                className={`p-2.5 rounded-lg border flex flex-col justify-between min-h-[96px] transition ${
+                  hasShow
+                    ? 'bg-zinc-950 border-amber-500/40 shadow-sm'
+                    : 'bg-zinc-950/40 border-dashed border-zinc-800 hover:border-zinc-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-mono font-bold text-zinc-300">{day}</span>
+                  {hasShow && (
+                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      {dayShows.length}
+                    </span>
+                  )}
+                </div>
+
+                {hasShow ? (
+                  <div className="space-y-1 my-auto">
+                    {dayShows.map(s => (
+                      <div key={s.id} className="text-[10px] font-mono leading-tight">
+                        <div className="text-white font-bold truncate flex items-center gap-1">
+                          {s.isPrimary && <Star className="w-2.5 h-2.5 text-amber-400 fill-amber-400 shrink-0" />}
+                          <span className="truncate">{s.name}</span>
+                        </div>
+                        <div className="text-[9px] text-zinc-500 truncate">{s.durationMinutes}m • {s.tvNetwork}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="my-auto text-center py-1">
+                    <span className="text-[10px] font-mono text-zinc-600 block">Open Slot</span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddForm(day)}
+                      className="mt-1 text-[10px] font-mono text-amber-400 hover:underline flex items-center justify-center gap-1 mx-auto"
+                    >
+                      <Plus className="w-2.5 h-2.5" />
+                      <span>Add Show</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Quick Add from Templates */}
       <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 sm:p-5 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-2 font-mono text-xs font-bold text-zinc-300 uppercase tracking-wider">
             <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>Quick-Add from Popular Show Formats</span>
+            <span>Quick-Add from Popular Show Formats ({filteredTemplates.length})</span>
           </div>
-          <span className="text-[11px] text-zinc-500 font-mono hidden sm:inline">1-Click Instant Setup</span>
+
+          {/* Category Filter Pills */}
+          <div className="flex items-center gap-1 flex-wrap font-mono text-[11px]">
+            {(['All', 'Flagship', 'B-Show', 'Digital', 'Hardcore', 'Divisional'] as ShowTemplateCategory[]).map(cat => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setTemplateCategory(cat)}
+                className={`px-2.5 py-1 rounded transition ${
+                  templateCategory === cat
+                    ? 'bg-amber-500 text-black font-bold shadow'
+                    : 'bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700'
+                }`}
+              >
+                {cat === 'All' ? 'All Formats' : cat}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {WEEKLY_SHOW_TEMPLATES.map((tpl, idx) => {
+          {filteredTemplates.map((tpl, idx) => {
             const previewName = tpl.nameTemplate(promotion.shortName || promotion.name);
             const isAlreadyAdded = weeklyShows.some(s => s.name.toLowerCase() === previewName.toLowerCase());
 
@@ -201,9 +343,14 @@ export const WeeklyShowsSettingsView: React.FC<WeeklyShowsSettingsViewProps> = (
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 font-bold">
                       {tpl.dayOfWeek}
                     </span>
-                    <span className="text-[10px] font-mono text-amber-400/90 font-semibold">
-                      {tpl.durationMinutes} Min
-                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-800/70 text-zinc-400">
+                        {tpl.category}
+                      </span>
+                      <span className="text-[10px] font-mono text-amber-400/90 font-semibold">
+                        {tpl.durationMinutes} Min
+                      </span>
+                    </div>
                   </div>
                   <h4 className="font-bold text-white text-xs font-mono leading-snug group-hover:text-amber-300 transition">
                     {previewName}
@@ -244,13 +391,24 @@ export const WeeklyShowsSettingsView: React.FC<WeeklyShowsSettingsViewProps> = (
                   {editingShowId ? 'Edit Weekly Television Show' : 'Add New Weekly Television Show'}
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsFormOpen(false)}
-                className="text-zinc-400 hover:text-white p-1 rounded bg-zinc-800 hover:bg-zinc-700 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRollRandomShow}
+                  className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-xs font-mono flex items-center gap-1 transition border border-zinc-700"
+                  title="Randomize fields with creative suggestions"
+                >
+                  <Shuffle className="w-3 h-3" />
+                  <span className="hidden sm:inline">Roll Idea</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsFormOpen(false)}
+                  className="text-zinc-400 hover:text-white p-1 rounded bg-zinc-800 hover:bg-zinc-700 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <form onSubmit={handleSaveShow} className="p-5 overflow-y-auto space-y-4 font-mono text-xs">
@@ -278,13 +436,9 @@ export const WeeklyShowsSettingsView: React.FC<WeeklyShowsSettingsViewProps> = (
                     onChange={e => setFormData({ ...formData, dayOfWeek: e.target.value as DayOfWeek })}
                     className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500"
                   >
-                    <option value="Monday">Monday</option>
-                    <option value="Tuesday">Tuesday</option>
-                    <option value="Wednesday">Wednesday</option>
-                    <option value="Thursday">Thursday</option>
-                    <option value="Friday">Friday</option>
-                    <option value="Saturday">Saturday</option>
-                    <option value="Sunday">Sunday</option>
+                    {DAYS_OF_WEEK.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -460,6 +614,14 @@ export const WeeklyShowsSettingsView: React.FC<WeeklyShowsSettingsViewProps> = (
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleDuplicateShow(show)}
+                      className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
+                      title="Clone / Duplicate Show"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleOpenEditForm(show)}

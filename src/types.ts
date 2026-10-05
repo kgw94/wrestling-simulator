@@ -486,6 +486,20 @@ export type StorylineArchetype =
   | 'Mask vs. Hair Grudge Feud'
   | 'Contract in the Bank Cash-In'
   | 'Mystery Attacker / Conspiracy'
+  | 'Forbidden Door Foreign Invader'
+  | 'Teacher vs. Prodigy Student'
+  | 'Cult Leader Indoctrination'
+  | 'Loser Leaves Town Exile'
+  | 'Respect Through Blood Iron Man'
+  | 'Hostile Corporate Buyout'
+  | 'Fall from Grace Redemption'
+  | 'Unstoppable Streak vs. The World'
+  | 'Bitter Love Triangle Melodrama'
+  | 'Hardcore Escalation Bloodbath'
+  | 'Giant Slayer David vs. Goliath'
+  | 'Undisputed Title Unification'
+  | 'Cruiserweight Aerial Revolution'
+  | 'Open Cash Bounty Hitman'
   | 'Custom Narrative';
 
 export interface StorylineMilestone {

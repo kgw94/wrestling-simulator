@@ -115,12 +115,51 @@ export const WritersHubView: React.FC<WritersHubViewProps> = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newArcTitle, setNewArcTitle] = useState('');
   const [newArcArchetype, setNewArcArchetype] = useState<StorylineArchetype>('Underdog Title Chase');
+  const [archetypeFilterCategory, setArchetypeFilterCategory] = useState<string>('All');
+  const [newArcStartingHeat, setNewArcStartingHeat] = useState<number>(75);
   const [newProtagonistId, setNewProtagonistId] = useState<string>(promotion.roster[0]?.id || '');
   const [newAntagonistId, setNewAntagonistId] = useState<string>(promotion.roster[1]?.id || '');
   const [newTargetTitleId, setNewTargetTitleId] = useState<string>('');
   const [newTargetPPV, setNewTargetPPV] = useState<string>(
     promotion.ppvSchedule?.[0]?.name || 'Genesis Supercard'
   );
+
+  const handleSuggestStorylineTitle = () => {
+    const tpl = STORYLINE_ARCHETYPES_CATALOG.find(a => a.archetype === newArcArchetype);
+    const prot = promotion.roster.find(w => w.id === newProtagonistId)?.name.split(' ')[0] || 'Hero';
+    const ant = promotion.roster.find(w => w.id === newAntagonistId)?.name.split(' ')[0] || 'Rival';
+    
+    const suggestions: Record<string, string[]> = {
+      'Underdog Title Chase': [`The Mountain Climb: ${prot}'s Quest`, `Against All Odds: ${prot} vs ${ant}`, `${prot}'s Impossible Dream`],
+      'Monster Reign of Terror': [`Reign of Carnage: ${ant}'s Wrath`, `Slaying the Beast: ${prot}'s Stand`, `${ant}'s Reign of Destruction`],
+      'Heartbreaking Tag Betrayal': [`Brotherhood Shattered: ${prot} vs ${ant}`, `The Steel Chair Double-Cross`, `No More Mercy`],
+      'Corrupt Authority Resistance': [`Defying the Machine: ${prot} Unchained`, `The Corporate Mandate`, `Locker Room Revolt`],
+      'Unlikely Odd-Couple Champions': [`Mismatched Gold: The Alliance`, `Strange Bedfellows`, `Odd Couple Championship Run`],
+      'Legend\'s Last Stand': [`One More Run: ${prot}'s Farewell`, `Career on the Line`, `The Final Ride`],
+      'Faction Gang Warfare': [`Turf War: Blood in the Ring`, `War for Territory Supremacy`, `Gang Warfare Escalation`],
+      'Mask vs. Hair Grudge Feud': [`Ultimate Pride: Mask vs Hair`, `Honor Over Everything`, `The Desecration & Retribution`],
+      'Contract in the Bank Cash-In': [`The Shadow of the Contract`, `Paranoia & The Golden Briefcase`, `Cash-In Imminent`],
+      'Mystery Attacker / Conspiracy': [`Whodunit? The Conspiracy`, `The Backstage Hitman`, `Unmasking the Mastermind`],
+      'Forbidden Door Foreign Invader': [`The Foreign Invasion: ${ant} Arrives`, `Cross-Promotional Superfight`, `Defending Company Honor`],
+      'Teacher vs. Prodigy Student': [`Student Surpasses Master`, `${ant}'s Revolt: The Bitter Protégé`, `Passing of the Torch`],
+      'Cult Leader Indoctrination': [`The Cult of Shadows`, `${ant}'s Flock: Sins of the Mind`, `Exorcism in the Darkness`],
+      'Loser Leaves Town Exile': [`Loser Leaves Town: The Banishment`, `One Must Go: ${prot} vs ${ant}`, `Career Termination Match`],
+      'Respect Through Blood Iron Man': [`30-Minute Marathon: Pure Wrestling`, `Respect Through Blood`, `The Purist's Dream Match`],
+      'Hostile Corporate Buyout': [`Corporate Takeover: Hostile Buyout`, `Originals vs The Suits`, `War for Company Control`],
+      'Fall from Grace Redemption': [`Road to Redemption: ${prot}'s Fire`, `Rock Bottom & The Ascent`, `The Long Walk Back`],
+      'Unstoppable Streak vs. The World': [`The Unbroken Streak`, `Who Can Slay ${ant}?`, `The 1 in the Record`],
+      'Bitter Love Triangle Melodrama': [`Love, Lies & Betrayal`, `Battle for the Spotlight`, `Heartbreak in the Squared Circle`],
+      'Hardcore Escalation Bloodbath': [`No Rules: The Barbed Wire War`, `Blood, Tables & Retribution`, `Carnage & Ruin`],
+      'Giant Slayer David vs. Goliath': [`The Giant Slayer: ${prot} vs ${ant}`, `Toppling the Colossus`, `David Takes Down Goliath`],
+      'Undisputed Title Unification': [`Winner Takes All: Unification`, `Two Belts, One True Champion`, `The Undisputed Crown`],
+      'Cruiserweight Aerial Revolution': [`The Aerial Revolution`, `Gravity Defied: ${prot} vs ${ant}`, `Speed, Flight & Main Event Respect`],
+      'Open Cash Bounty Hitman': [`The $100,000 Bounty on ${prot}`, `The Mercenary Contract`, `Bounty Hunters Everywhere`]
+    };
+
+    const pool = suggestions[newArcArchetype] || [`${tpl?.name || newArcArchetype}: ${prot} vs ${ant}`];
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    setNewArcTitle(chosen);
+  };
 
   // Plot Twist Modal
   const [showTwistModal, setShowTwistModal] = useState(false);
@@ -221,6 +260,7 @@ export const WritersHubView: React.FC<WritersHubViewProps> = ({
       targetWeekOffset: idx + 1
     }));
 
+    const startingMomentum = newArcStartingHeat >= 90 ? 'White Hot' : newArcStartingHeat >= 75 ? 'Boiling Hot' : 'Simmering';
     const newArc: StorylineArc = {
       id: `arc-${Date.now()}`,
       title: newArcTitle.trim(),
@@ -229,8 +269,8 @@ export const WritersHubView: React.FC<WritersHubViewProps> = ({
       antagonistIds: [newAntagonistId],
       targetPPVName: newTargetPPV,
       targetTitleId: newTargetTitleId || undefined,
-      heat: 75,
-      momentum: 'Boiling Hot',
+      heat: newArcStartingHeat,
+      momentum: startingMomentum,
       status: 'Active On TV',
       startWeek: currentWeek,
       startYear: currentYear,
@@ -2303,136 +2343,296 @@ export const WritersHubView: React.FC<WritersHubViewProps> = ({
       {/* ============================================================ */}
       {/* MODAL: FORGE NEW STORYLINE ARC */}
       {/* ============================================================ */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl max-w-xl w-full p-6 space-y-4 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-              <h3 className="text-lg font-bold text-white font-mono flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-amber-400" />
-                <span>Forge New Storyline Arc</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="text-zinc-500 hover:text-white font-mono text-sm"
-              >
-                ✕
-              </button>
-            </div>
+      {showCreateModal && (() => {
+        const filteredArchetypes = archetypeFilterCategory === 'All'
+          ? STORYLINE_ARCHETYPES_CATALOG
+          : STORYLINE_ARCHETYPES_CATALOG.filter(c => c.recommendedCategory === archetypeFilterCategory);
 
-            <div>
-              <label className="text-xs font-mono text-zinc-400 block mb-1">Storyline Title</label>
-              <input
-                type="text"
-                value={newArcTitle}
-                onChange={e => setNewArcTitle(e.target.value)}
-                placeholder="e.g. The Apex Championship Quest, Grudge Blood War..."
-                className="w-full bg-zinc-950 border border-zinc-800 text-white rounded px-3 py-2 text-xs font-mono focus:outline-none focus:border-amber-500"
-              />
-            </div>
+        const currentBlueprint = STORYLINE_ARCHETYPES_CATALOG.find(c => c.archetype === newArcArchetype) || STORYLINE_ARCHETYPES_CATALOG[0];
 
-            <div>
-              <label className="text-xs font-mono text-zinc-400 block mb-1">Narrative Archetype</label>
-              <select
-                value={newArcArchetype}
-                onChange={e => setNewArcArchetype(e.target.value as StorylineArchetype)}
-                className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded px-3 py-2 text-xs font-sans focus:outline-none focus:border-amber-500"
-              >
-                {STORYLINE_ARCHETYPES_CATALOG.map(cat => (
-                  <option key={cat.archetype} value={cat.archetype}>
-                    {cat.name} ({cat.recommendedCategory})
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-zinc-400 mt-1 font-sans">
-                {STORYLINE_ARCHETYPES_CATALOG.find(c => c.archetype === newArcArchetype)?.tagline}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-mono text-zinc-400 block mb-1">Protagonist / Face</label>
-                <select
-                  value={newProtagonistId}
-                  onChange={e => setNewProtagonistId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded px-2.5 py-1.5 text-xs font-sans focus:outline-none focus:border-amber-500"
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-4 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl animate-fade-in max-h-[92vh] overflow-y-auto">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                <div className="flex items-center gap-2 font-mono">
+                  <BookOpen className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-lg font-bold text-white">
+                    Forge New Storyline Arc
+                  </h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                    {STORYLINE_ARCHETYPES_CATALOG.length} Archetypes Available
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="text-zinc-500 hover:text-white font-mono text-sm p-1 rounded hover:bg-zinc-800 transition"
                 >
-                  {promotion.roster.map(w => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} ({w.alignment})
+                  ✕
+                </button>
+              </div>
+
+              {/* Step 1: Archetype Category Filter */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
+                  <span className="font-bold uppercase tracking-wider text-zinc-300">1. Select Narrative Category</span>
+                  <span className="text-[11px] text-zinc-500">Filter blueprints by feud style</span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap font-mono text-[11px]">
+                  {(['All', 'World Title', 'Grudge Feud', 'Tag Division', 'Midcard Ascension'] as const).map(cat => {
+                    const count = cat === 'All'
+                      ? STORYLINE_ARCHETYPES_CATALOG.length
+                      : STORYLINE_ARCHETYPES_CATALOG.filter(c => c.recommendedCategory === cat).length;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => {
+                          setArchetypeFilterCategory(cat);
+                          const firstInCat = cat === 'All' 
+                            ? STORYLINE_ARCHETYPES_CATALOG[0]
+                            : STORYLINE_ARCHETYPES_CATALOG.find(c => c.recommendedCategory === cat);
+                          if (firstInCat) setNewArcArchetype(firstInCat.archetype);
+                        }}
+                        className={`px-2.5 py-1 rounded transition flex items-center gap-1 ${
+                          archetypeFilterCategory === cat
+                            ? 'bg-amber-500 text-black font-bold shadow'
+                            : 'bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700'
+                        }`}
+                      >
+                        <span>{cat}</span>
+                        <span className="text-[10px] opacity-75">({count})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Step 2: Narrative Archetype Dropdown */}
+              <div>
+                <label className="text-xs font-mono text-zinc-300 font-bold block mb-1">
+                  2. Narrative Storyline Archetype ({filteredArchetypes.length} options)
+                </label>
+                <select
+                  value={newArcArchetype}
+                  onChange={e => setNewArcArchetype(e.target.value as StorylineArchetype)}
+                  className="w-full bg-zinc-950 border border-zinc-700 text-zinc-100 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-amber-500"
+                >
+                  {filteredArchetypes.map(cat => (
+                    <option key={cat.archetype} value={cat.archetype}>
+                      {cat.name} — [{cat.recommendedCategory}] ({cat.suggestedDurationWeeks} Weeks)
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div>
-                <label className="text-xs font-mono text-zinc-400 block mb-1">Antagonist / Heel</label>
-                <select
-                  value={newAntagonistId}
-                  onChange={e => setNewAntagonistId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded px-2.5 py-1.5 text-xs font-sans focus:outline-none focus:border-amber-500"
-                >
-                  {promotion.roster.map(w => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} ({w.alignment})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+              {/* Narrative Blueprint Preview Card */}
+              {currentBlueprint && (
+                <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="text-xs font-bold text-white font-mono">{currentBlueprint.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 font-mono text-[10px]">
+                      <span className="px-2 py-0.5 rounded bg-zinc-800 text-amber-400 border border-zinc-700">
+                        {currentBlueprint.recommendedCategory}
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                        {currentBlueprint.suggestedDurationWeeks} Weeks Arc
+                      </span>
+                    </div>
+                  </div>
 
-            <div className="grid grid-cols-2 gap-3">
+                  <p className="text-xs text-amber-300/90 font-sans italic leading-snug">
+                    "{currentBlueprint.tagline}"
+                  </p>
+                  <p className="text-[11px] text-zinc-400 font-sans leading-relaxed">
+                    {currentBlueprint.description}
+                  </p>
+
+                  {/* 4-Step Milestone Roadmap Preview */}
+                  <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
+                    <div className="text-[10px] font-mono uppercase text-zinc-500 font-bold tracking-wider">
+                      Episodic TV Milestones Roadmap (4 Weeks)
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {currentBlueprint.milestones.map((m, idx) => (
+                        <div key={idx} className="p-2 rounded bg-zinc-900/90 border border-zinc-800/80 flex flex-col justify-between text-[11px]">
+                          <div>
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className="font-mono text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-amber-400 font-bold">
+                                Step {idx + 1}
+                              </span>
+                              <span className="font-mono text-[9px] text-zinc-400">
+                                {m.category === 'Match' ? '⚔️ ' : '🎤 '}{m.segmentType}
+                              </span>
+                            </div>
+                            <div className="font-bold text-white font-mono text-[11px] truncate">
+                              {m.title}
+                            </div>
+                            <p className="text-[10px] text-zinc-400 font-sans line-clamp-2 mt-0.5 leading-snug">
+                              {m.description}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Storyline Title & Auto-Suggest */}
               <div>
-                <label className="text-xs font-mono text-zinc-400 block mb-1">Target Climax PPV</label>
-                <select
-                  value={newTargetPPV}
-                  onChange={e => setNewTargetPPV(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded px-2.5 py-1.5 text-xs font-sans focus:outline-none focus:border-amber-500"
-                >
-                  {(promotion.ppvSchedule || []).map(p => (
-                    <option key={p.id} value={p.name}>
-                      {p.name} (Wk {p.weekNumber})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-mono text-zinc-300 font-bold">
+                    3. Storyline Title <span className="text-amber-400">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleSuggestStorylineTitle}
+                    className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-mono hover:underline"
+                    title="Generate a custom headline based on archetype and rivals"
+                  >
+                    <Shuffle className="w-3 h-3" />
+                    <span>🎲 Suggest Title</span>
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={newArcTitle}
+                  onChange={e => setNewArcTitle(e.target.value)}
+                  placeholder="e.g. The Mountain Climb, Student Surpasses Master..."
+                  className="w-full bg-zinc-950 border border-zinc-700 text-white rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-amber-500"
+                />
               </div>
 
-              <div>
-                <label className="text-xs font-mono text-zinc-400 block mb-1">Championship at Stake</label>
-                <select
-                  value={newTargetTitleId}
-                  onChange={e => setNewTargetTitleId(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-200 rounded px-2.5 py-1.5 text-xs font-sans focus:outline-none focus:border-amber-500"
-                >
-                  <option value="">-- Non-Title Feud --</option>
-                  {promotion.titles.filter(t => !t.isRetired).map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+              {/* Step 4: Protagonist and Antagonist */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-mono text-zinc-300 font-bold block mb-1">
+                    Protagonist / Hero / Face <span className="text-amber-400">*</span>
+                  </label>
+                  <select
+                    value={newProtagonistId}
+                    onChange={e => setNewProtagonistId(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 rounded-lg px-2.5 py-2 text-xs font-sans focus:outline-none focus:border-amber-500"
+                  >
+                    {promotion.roster.map(w => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} [{w.alignment}] — {w.push} ({w.overness} Over)
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
-              <button
-                type="button"
-                onClick={() => setShowCreateModal(false)}
-                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono text-xs transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveNewStoryline}
-                className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs transition shadow"
-              >
-                Launch Arc Into Production
-              </button>
+                <div>
+                  <label className="text-xs font-mono text-zinc-300 font-bold block mb-1">
+                    Antagonist / Rival / Heel <span className="text-amber-400">*</span>
+                  </label>
+                  <select
+                    value={newAntagonistId}
+                    onChange={e => setNewAntagonistId(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 rounded-lg px-2.5 py-2 text-xs font-sans focus:outline-none focus:border-amber-500"
+                  >
+                    {promotion.roster.map(w => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} [{w.alignment}] — {w.push} ({w.overness} Over)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Step 5: Climax PPV & Championship Stake */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-mono text-zinc-300 font-bold block mb-1">
+                    Target Climax Pay-Per-View
+                  </label>
+                  <select
+                    value={newTargetPPV}
+                    onChange={e => setNewTargetPPV(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 rounded-lg px-2.5 py-2 text-xs font-sans focus:outline-none focus:border-amber-500"
+                  >
+                    {(promotion.ppvSchedule || []).map(p => (
+                      <option key={p.id} value={p.name}>
+                        {p.name} (Wk {p.weekNumber})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-mono text-zinc-300 font-bold block mb-1">
+                    Championship at Stake
+                  </label>
+                  <select
+                    value={newTargetTitleId}
+                    onChange={e => setNewTargetTitleId(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-700 text-zinc-200 rounded-lg px-2.5 py-2 text-xs font-sans focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">-- Non-Title Feud --</option>
+                    {promotion.titles.filter(t => !t.isRetired).map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Step 6: Starting Narrative Heat */}
+              <div className="p-3 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-between gap-3">
+                <div>
+                  <span className="text-xs font-mono font-bold text-white block">
+                    Starting TV Heat Level: {newArcStartingHeat}/100
+                  </span>
+                  <span className="text-[11px] text-zinc-400 font-sans">
+                    Initial buzz and television intrigue when the narrative launches
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 font-mono text-xs">
+                  {[65, 75, 85, 95].map(heatVal => (
+                    <button
+                      key={heatVal}
+                      type="button"
+                      onClick={() => setNewArcStartingHeat(heatVal)}
+                      className={`px-2.5 py-1 rounded transition text-[11px] font-bold ${
+                        newArcStartingHeat === heatVal
+                          ? 'bg-amber-500 text-black shadow'
+                          : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {heatVal}°
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono text-xs transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveNewStoryline}
+                  className="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs transition shadow flex items-center gap-1.5"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  <span>Launch Arc Into Production</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ============================================================ */}
       {/* MODAL: ADD BOOKING NOTE */}

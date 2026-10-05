@@ -1075,6 +1075,509 @@ export const STORYLINE_ARCHETYPES_CATALOG: ArchetypeBlueprint[] = [
         suggestedFinish: 'Clean Pinfall'
       }
     ]
+  },
+  {
+    archetype: 'Forbidden Door Foreign Invader',
+    name: 'The Forbidden Door: Foreign Invader',
+    tagline: 'An elite outsider champion invades your territory to desecrate your company\'s legacy.',
+    description: 'Interpromotional war: An international ace invades uninvited, claiming the domestic locker room is soft, and targets your top championship to take it overseas.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'World Title',
+    milestones: [
+      {
+        title: 'The Uninvited Intruder Arrives',
+        category: 'Angle',
+        segmentType: 'Confrontation / Staredown',
+        description: 'The foreign megastar jumps the security rail after the main event, destroying the ring apron and brandishing their foreign title belt.'
+      },
+      {
+        title: 'Cross-Promotional Exhibition Brawl',
+        category: 'Match',
+        segmentType: 'Tag Team',
+        description: 'The invader and an outside henchman battle domestic stars; match devolves into a wild ringside melee.',
+        suggestedFinish: 'Disqualification (DQ)'
+      },
+      {
+        title: 'Territory Flag Burning Manifesto',
+        category: 'Angle',
+        segmentType: 'In-Ring Promo',
+        description: 'The invader cuts a blistering promo insulting the host promotion, challenging the domestic ace to defend company honor at the PPV.'
+      },
+      {
+        title: 'Clash for Promotion Honor',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'The international superfight. The domestic hero battles the foreign ace in a historic cross-promotional war to protect the homeland.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Teacher vs. Prodigy Student',
+    name: 'Student Surpasses Master: The Prodigy\'s Revolt',
+    tagline: 'A veteran mentor watches their greatest pupil turn arrogant, bitter, and predatory.',
+    description: 'The veteran took the young prodigy under their wing, taught them every hold, only for the pupil to declare the mentor obsolete and demand their spot.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'Grudge Feud',
+    milestones: [
+      {
+        title: 'The Master Upstaged',
+        category: 'Match',
+        segmentType: 'Tag Team',
+        description: 'In a tag bout, the young star refuses to tag the mentor in, steals the spotlight, and shows disrespectful body language.',
+        suggestedFinish: 'Distraction Rollup'
+      },
+      {
+        title: 'Locker Room Humiliation',
+        category: 'Angle',
+        segmentType: 'Backstage Ambush',
+        description: 'The student attacks the mentor in the trainer\'s room, shouting that the mentor held them back out of jealousy.'
+      },
+      {
+        title: 'Passing of the Torch Refused',
+        category: 'Angle',
+        segmentType: 'In-Ring Promo',
+        description: 'The veteran demands an apology and promises to teach one final, painful lesson inside the squared circle.'
+      },
+      {
+        title: 'Mastery vs. Ambition (Submission Blowoff)',
+        category: 'Match',
+        segmentType: 'Submission Match',
+        description: 'Pure technical grappling clinic where mentor and student counter each other\'s signature holds until one is forced to tap out.',
+        suggestedFinish: 'Submission'
+      }
+    ]
+  },
+  {
+    archetype: 'Cult Leader Indoctrination',
+    name: 'The Cult of Shadows: Indoctrination',
+    tagline: 'A charismatic occult mastermind brainwashes vulnerable stars into their twisted flock.',
+    description: 'A haunting, silver-tongued cult leader kidnaps or mentally breaks members of the locker room, demanding the hero surrender their soul.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'Grudge Feud',
+    milestones: [
+      {
+        title: 'The Cryptic Broadcast',
+        category: 'Angle',
+        segmentType: 'Hype Video / Vignette',
+        description: 'Arena lights go black; eerie music plays as the cult leader broadcasts a chilling sermon with flashing images of the protagonist.'
+      },
+      {
+        title: 'Kidnapping & Abduction',
+        category: 'Angle',
+        segmentType: 'Faction War / Gang Attack',
+        description: 'The cult swarms the ring in animal masks, carrying away the hero\'s trusted confidant into the backstage shadows.'
+      },
+      {
+        title: 'The Broken Disciple Revealed',
+        category: 'Angle',
+        segmentType: 'In-Ring Promo',
+        description: 'The captured ally returns brainwashed, speaking in cult riddles and turning on the protagonist in shocking betrayal.'
+      },
+      {
+        title: 'Exorcism in the Darkness',
+        category: 'Match',
+        segmentType: 'Hardcore / No DQ',
+        description: 'Unsanctioned violent brawl amidst flickering torches, fog, and occult psychology to break the curse.',
+        suggestedFinish: 'Last Man Standing 10-Count'
+      }
+    ]
+  },
+  {
+    archetype: 'Loser Leaves Town Exile',
+    name: 'Loser Leaves Town: The Ultimate Banishment',
+    tagline: 'Two bitter enemies collide with their careers and company contracts on the line.',
+    description: 'An unbearable rivalry has poisoned the locker room so deeply that the Board of Directors orders a definitive end: the loser is fired forever.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'Grudge Feud',
+    milestones: [
+      {
+        title: 'Sanctioning the Banishment',
+        category: 'Angle',
+        segmentType: 'Contract Signing',
+        description: 'The General Manager brings termination papers to the center ring. Both stars sign away their right to ever work here if they lose.'
+      },
+      {
+        title: 'The Enforcer Tune-Up Trap',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'Heel hires an outside mercenary to break the babyface\'s leg before the fateful PPV match.',
+        suggestedFinish: 'Disqualification (DQ)'
+      },
+      {
+        title: 'The Farewell Speech Threat',
+        category: 'Angle',
+        segmentType: 'In-Ring Promo',
+        description: 'Emotional promo addressing the fans; both wrestlers reflect on everything they sacrificed to get here.'
+      },
+      {
+        title: 'The Final Goodbye (Steel Cage Blowoff)',
+        category: 'Match',
+        segmentType: 'Steel Cage',
+        description: '15 feet of steel! Nowhere to run. Pure desperate survival with tears, blood, and a career-ending pinfall.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Respect Through Blood Iron Man',
+    name: 'Respect Through Blood: 30-Minute Iron Man',
+    tagline: 'Two supreme athletic purists wage an exhausting war to crown the greatest wrestler alive.',
+    description: 'No petty hatred or gimmicks—just two elite world-class combatants testing the absolute limits of human endurance.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'World Title',
+    milestones: [
+      {
+        title: 'The Athletic Challenge',
+        category: 'Angle',
+        segmentType: 'Confrontation / Staredown',
+        description: 'Handshake in the center of the ring. Challenger vows that the champion cannot survive 30 minutes of peak athletic pressure.'
+      },
+      {
+        title: 'The 15-Minute Exhibition Tease',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'A breathless preview contest reaches a thrilling 15-minute time limit draw, leaving the crowd clamoring for more.',
+        suggestedFinish: 'Disqualification (DQ)'
+      },
+      {
+        title: 'Tale of the Tape & Conditioning',
+        category: 'Angle',
+        segmentType: 'Hype Video / Vignette',
+        description: 'High-production training package breaking down both athletes\' heart rate, stamina, signature counters, and championship pedigree.'
+      },
+      {
+        title: 'The 30-Minute Marathon Payoff',
+        category: 'Match',
+        segmentType: 'Iron Man (30 Min)',
+        description: 'Heart-stopping test of stamina, reversals, and agonizing fall-counts down to the final 10-second buzzer.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Hostile Corporate Buyout',
+    name: 'The Hostile Corporate Takeover',
+    tagline: 'An arrogant billionaire corporate syndicate attempts to buy out the company and fire the originals.',
+    description: 'An outside investor acquires a minority stake, brings in slick corporate enforcers, and attempts to strip traditional wrestlers of their jobs.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'Grudge Feud',
+    milestones: [
+      {
+        title: 'The Hostile Shareholder Announcement',
+        category: 'Angle',
+        segmentType: 'In-Ring Promo',
+        description: 'The wealthy corporate executive walks down the ramp with private security, declaring the promotion\'s traditions dead and obsolete.'
+      },
+      {
+        title: 'Corporate Enforcers Strike',
+        category: 'Match',
+        segmentType: 'Tag Team',
+        description: 'Corporate suit bribes a corrupt referee to award a fast-count pinfall against the locker room originals.',
+        suggestedFinish: 'Heel Turn / Screwjob'
+      },
+      {
+        title: 'Office Raid & Vandalism',
+        category: 'Angle',
+        segmentType: 'Backstage Ambush',
+        description: 'The locker room originals storm the corporate executive\'s luxury VIP box, smashing champagne bottles and throwing suits into the wall!'
+      },
+      {
+        title: 'Company Ownership War (Hell in a Cell)',
+        category: 'Match',
+        segmentType: 'Hell in a Cell',
+        description: 'High-stakes locked cage battle where the original hero fights the billionaire\'s chosen champion for 100% control of the company.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Fall from Grace Redemption',
+    name: 'Fall from Grace: The Long Road to Redemption',
+    tagline: 'A broken former champion hits rock bottom and claws their way back through the dirt.',
+    description: 'After losing the title, the superstar spirals into self-doubt, loses matches, and alienates allies before finding their inner fire again.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'Midcard Ascension',
+    milestones: [
+      {
+        title: 'Heartbreaking Upset Loss',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'The protagonist suffers an embarrassing defeat to a rookie, collapsing in the corner as the arena falls silent in pity.',
+        suggestedFinish: 'Clean Pinfall'
+      },
+      {
+        title: 'Confessions at Rock Bottom',
+        category: 'Angle',
+        segmentType: 'Interview Segment',
+        description: 'Emotional sit-down interview with taped hands and tears. The protagonist admits they lost their edge and asks the fans to believe one last time.'
+      },
+      {
+        title: 'The Bully\'s Humiliation Staredown',
+        category: 'Angle',
+        segmentType: 'Confrontation / Staredown',
+        description: 'Arrogant heel mocks the protagonist\'s mental spiral; protagonist snaps with fiery eyes and delivers a thunderous right hand!'
+      },
+      {
+        title: 'The Fire Rekindled (Arena Brawl)',
+        category: 'Match',
+        segmentType: 'Falls Count Anywhere',
+        description: 'Emotional, cathartic brawl through the arena bowl. The protagonist overcomes past trauma to secure a roaring victory.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Unstoppable Streak vs. The World',
+    name: 'The Unbroken Streak: Who Will Be The One?',
+    tagline: 'A dominant phenom builds an untarnished undefeated record, daring anyone to make history.',
+    description: 'The superstar cannot be beaten. The entire locker room unites in frantic competition to be the one who finally breaks the streak.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'World Title',
+    milestones: [
+      {
+        title: 'Dominant Victim Falls in Seconds',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'The streak holder obliterates a high-profile challenger in under 5 minutes with a devastating finish.',
+        suggestedFinish: 'Clean Pinfall'
+      },
+      {
+        title: 'The Open Challenge Manifesto',
+        category: 'Angle',
+        segmentType: 'In-Ring Promo',
+        description: 'Streak holder stands in the ring surrounded by defeated opponents, asking if anyone in the world has the guts to step forward.'
+      },
+      {
+        title: 'Desperate Gang Ambush',
+        category: 'Angle',
+        segmentType: 'Backstage Ambush',
+        description: 'Three locker room members ambush the phenom in the weight room trying to injure them before the title bout.'
+      },
+      {
+        title: 'The Streak on the Line (Last Man Standing)',
+        category: 'Match',
+        segmentType: 'Last Man Standing',
+        description: 'Brutal clash where the valiant challenger hits every finishing move in their arsenal, pushing the undefeated phenom to the brink.',
+        suggestedFinish: 'Last Man Standing 10-Count'
+      }
+    ]
+  },
+  {
+    archetype: 'Bitter Love Triangle Melodrama',
+    name: 'The Bitter Love Triangle Melodrama',
+    tagline: 'A beloved manager or partner is caught between two obsessed, jealous superstars.',
+    description: 'Soap opera wrestling at its finest—jealous accusations, stolen glances, staged ringside dates, and explosive romantic fury.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'Grudge Feud',
+    milestones: [
+      {
+        title: 'Suspicious Flowers Backstage',
+        category: 'Angle',
+        segmentType: 'Interview Segment',
+        description: 'Heel sends extravagant black roses to the face\'s ringside valet; tensions explode during a live interview.'
+      },
+      {
+        title: 'Ringside Heartbreak Distraction',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'Heel taunts the valet on the apron; babyface is distracted by romantic jealousy and rolled up for the pin.',
+        suggestedFinish: 'Distraction Rollup'
+      },
+      {
+        title: 'Choose Your Side in the Center Ring',
+        category: 'Angle',
+        segmentType: 'Confrontation / Staredown',
+        description: 'Both competitors stand in the ring demanding the manager choose who they will manage; tears, slap, and a wild brawl!'
+      },
+      {
+        title: 'Winner Takes All Custody (Ladder Match)',
+        category: 'Match',
+        segmentType: 'Ladder Match',
+        description: 'Wild, high-flying ladder match with personal managerial contracts hanging high above the ring.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Hardcore Escalation Bloodbath',
+    name: 'Hardcore Escalation: No Rules, Pure Blood',
+    tagline: 'Standard rules break down into barbaric weapon-fueled violence and broken tables.',
+    description: 'A personal rivalry turns sadistic. Steel chairs, barbed wire, tables, and thumbtacks are introduced until only pure survival remains.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'Grudge Feud',
+    milestones: [
+      {
+        title: 'The Table Incident Escalation',
+        category: 'Match',
+        segmentType: 'Hardcore / No DQ',
+        description: 'Wild match where the heel powerbombs the hero through a flaming table on the arena floor!',
+        suggestedFinish: 'Weapon / Foreign Object'
+      },
+      {
+        title: 'Parking Garage Barbed Wire Assault',
+        category: 'Angle',
+        segmentType: 'Backstage Ambush',
+        description: 'The bloody protagonist attacks the heel in the parking garage with a trash can and 2x4 wrapped in barbed wire.'
+      },
+      {
+        title: 'Wrestling is Dead, War is Here',
+        category: 'Angle',
+        segmentType: 'In-Ring Promo',
+        description: 'Both bloody warriors face off across a ring filled with steel chairs, daring each other to take it all the way to the grave.'
+      },
+      {
+        title: 'Carnage & Ruin (TLC Blowoff)',
+        category: 'Match',
+        segmentType: 'TLC (Tables Ladders Chairs)',
+        description: 'Unbelievable spectacle of human destruction where bodies are sacrificed for the ultimate victory.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Giant Slayer David vs. Goliath',
+    name: 'David vs. Goliath: The Giant Slayer',
+    tagline: 'A diminutive athletic underdog takes on an insurmountable 7-foot monster.',
+    description: 'A massive physical discrepancy where the small hero must rely on speed, chopping down the legs, and sheer heart to topple the giant.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'World Title',
+    milestones: [
+      {
+        title: 'The Disrespectful Chokeslam',
+        category: 'Angle',
+        segmentType: 'Confrontation / Staredown',
+        description: 'Giant casually lifts the underdog by the throat with one arm, tosses them like a ragdoll, and laughs off the challenge.'
+      },
+      {
+        title: 'Chopping the Oak Tree Down',
+        category: 'Match',
+        segmentType: 'Tag Team',
+        description: 'Underdog teams up to use rapid hit-and-run dropkicks to finally stagger the giant off their feet to a thunderous arena pop!',
+        suggestedFinish: 'Clean Pinfall'
+      },
+      {
+        title: 'The Tale of Leverage & Heart',
+        category: 'Angle',
+        segmentType: 'Hype Video / Vignette',
+        description: 'Video breakdown showing the giant\'s crushing bench press vs. the underdog\'s speed and indomitable courage.'
+      },
+      {
+        title: 'Toppling the Titan Payoff',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'Classic David vs. Goliath showdown! The hero absorbs punishment, battles back with breathtaking aerial assault, and slays the giant!',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Undisputed Title Unification',
+    name: 'The Undisputed Unification: Winner Takes All',
+    tagline: 'Two reigning champions battle to merge titles and crown one undisputed ruler.',
+    description: 'Brand prestige, ego, and supreme championship gold. Only one superstar can walk out holding both world title belts over their head.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'World Title',
+    milestones: [
+      {
+        title: 'Two Belts, One Ring Staredown',
+        category: 'Angle',
+        segmentType: 'Confrontation / Staredown',
+        description: 'Both reigning champions stand nose-to-nose with belts hoisted high in the air as pyro explodes.'
+      },
+      {
+        title: 'Champions & Top Contenders Preview',
+        category: 'Match',
+        segmentType: '6-Man Tag',
+        description: 'Thrilling 6-man preview featuring the champions and their respective top division contenders.',
+        suggestedFinish: 'Clean Pinfall'
+      },
+      {
+        title: 'Unification Sanction Ceremony',
+        category: 'Angle',
+        segmentType: 'Contract Signing',
+        description: 'Dignified formal contract signing with promotion executives. One championship lineage will be absorbed forever.'
+      },
+      {
+        title: 'Winner-Take-All Unification Bout',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'Monumental pay-per-view main event that permanently changes the title landscape of the promotion.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Cruiserweight Aerial Revolution',
+    name: 'The Aerial Revolution: Speed, Flight & Respect',
+    tagline: 'High-flying innovators take flight to prove the cruiserweights belong in the main event.',
+    description: 'Two breathtaking aerial technicians challenge the stereotype that heavyweight giants rule wrestling with gravity-defying maneuvers.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'Midcard Ascension',
+    milestones: [
+      {
+        title: 'Showstealing 450 Splash Opener',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'High-speed exhibition that brings the arena to their feet chanting "This Is Awesome!"',
+        suggestedFinish: 'Clean Pinfall'
+      },
+      {
+        title: 'Demanding Main Event Respect',
+        category: 'Angle',
+        segmentType: 'Interview Segment',
+        description: 'Post-match interview declaring that the cruiserweights out-work, out-fly, and out-perform the lazy heavyweight champions.'
+      },
+      {
+        title: 'Friendly Rivalry Escalates',
+        category: 'Angle',
+        segmentType: 'Confrontation / Staredown',
+        description: 'Competitor warns that while they respect each other\'s innovation, in the ring there are no friends when glory is on the line.'
+      },
+      {
+        title: 'Gravity-Defying Ladder Classic',
+        category: 'Match',
+        segmentType: 'Ladder Match',
+        description: 'Jaw-dropping acrobatic spectacle featuring top-rope dives, springboards, and death-defying ladder spots.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
+  },
+  {
+    archetype: 'Open Cash Bounty Hitman',
+    name: 'The Open Cash Bounty: Target on the Challenger',
+    tagline: 'A cowardly champion places a $100,000 bounty on the top contender\'s head.',
+    description: 'The terrified champion refuses to fight fair, opening a briefcase of cash for anyone who puts the challenger in the hospital.',
+    suggestedDurationWeeks: 4,
+    recommendedCategory: 'World Title',
+    milestones: [
+      {
+        title: 'The Briefcase of Cash Unveiled',
+        category: 'Angle',
+        segmentType: 'In-Ring Promo',
+        description: 'Champion opens a briefcase loaded with stacks of $100 bills, offering it to any wrestler who takes out the challenger\'s knees.'
+      },
+      {
+        title: 'The Bounty Hunter Hits',
+        category: 'Match',
+        segmentType: 'Singles',
+        description: 'A mercenary attacks the challenger with a lead pipe, trying to collect the cash prize before officials break it up.',
+        suggestedFinish: 'Disqualification (DQ)'
+      },
+      {
+        title: 'Collecting the Check Denied',
+        category: 'Angle',
+        segmentType: 'Backstage Ambush',
+        description: 'Challenger storms the champion\'s dressing room, beating down security and dumping the briefcase of money over the champion\'s head!'
+      },
+      {
+        title: 'No Bounties, No Mercy (Steel Cage Blowoff)',
+        category: 'Match',
+        segmentType: 'Steel Cage',
+        description: 'Champion is locked in the cage with nowhere to hide and no hitmen to save them from justice.',
+        suggestedFinish: 'Clean Pinfall'
+      }
+    ]
   }
 ];
 

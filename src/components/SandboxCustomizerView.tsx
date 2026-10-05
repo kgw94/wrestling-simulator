@@ -926,6 +926,44 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
               />
             </div>
           </div>
+
+          {/* Quick Jump Callout: Weekly Shows & Broadcast Schedule */}
+          <div className="mt-4 p-4 rounded-xl bg-zinc-950/70 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Tv className="w-4 h-4 text-amber-400" />
+                <span className="font-bold text-white font-mono text-xs">
+                  Weekly Broadcast Network ({weeklyShows.length} {weeklyShows.length === 1 ? 'Show' : 'Shows'} Configured)
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400 font-sans mt-0.5">
+                Add secondary B-shows, digital OTT tapings, or late-night hardcore programming under Weekly Shows settings.
+              </p>
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                {weeklyShows.map(s => (
+                  <span
+                    key={s.id}
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                      s.isPrimary 
+                        ? 'bg-amber-500/10 text-amber-300 border-amber-500/40 font-bold' 
+                        : 'bg-zinc-800/80 text-zinc-400 border-zinc-700'
+                    }`}
+                  >
+                    {s.isPrimary ? '★ ' : ''}{s.name} ({s.dayOfWeek || 'Weekly'})
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('weekly_shows')}
+              className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs transition flex items-center gap-1.5 shrink-0 self-start sm:self-center shadow"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add / Manage Weekly Shows &rarr;</span>
+            </button>
+          </div>
         </div>
       )}
 
