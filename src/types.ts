@@ -543,6 +543,24 @@ export type CreativePhilosophy =
 
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 
+export type DayOfWeek = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+
+export type BroadcastTier = 'Free-To-Air TV' | 'Cable Prime-Time' | 'Premium Cable' | 'Online Streaming' | 'Late Night Underground';
+
+export interface WeeklyShow {
+  id: string;
+  name: string;
+  dayOfWeek?: DayOfWeek;
+  tvNetwork: string;
+  durationMinutes?: number; // e.g. 60, 90, 120
+  brandId?: string;
+  isPrimary?: boolean;
+  productionCostWeekly?: number;
+  minNetworkRating?: number;
+  description?: string;
+  broadcastTier?: BroadcastTier;
+}
+
 export interface Promotion {
   id: string;
   name: string;
@@ -551,6 +569,8 @@ export interface Promotion {
   description: string;
   budget: number;
   weeklyTVShow: string;
+  weeklyShows?: WeeklyShow[];
+  activeWeeklyShowId?: string;
   tvNetwork: string;
   networkSatisfaction: number; // 0-100
   minNetworkRating: number; // threshold required by broadcaster

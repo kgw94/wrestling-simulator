@@ -28,6 +28,17 @@ import {
   PREGENERATED_BELT_ASSETS,
   BeltCustomizationOptions
 } from '../utils/beltImageGenerator';
+import {
+  simulateAutomatedTournamentForTitle,
+  simulateBattleRoyalForTitle,
+  applyVacancyCrowningResult,
+  getEligibleContendersForVacancy,
+  isTagChampionship,
+  VacancyContender,
+  AutomatedTournamentResult,
+  BattleRoyalResult
+} from '../utils/titleVacancyEvents';
+import { VacancyCrowningModal } from './VacancyCrowningModal';
 import { 
   Trophy, 
   Flame, 
@@ -61,7 +72,10 @@ import {
   Image,
   Wand2,
   Download,
-  Copy
+  Copy,
+  Play,
+  Swords,
+  Medal
 } from 'lucide-react';
 
 interface TitlesFeudsViewProps {
@@ -125,6 +139,17 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
   const [generatedPreviewUrl, setGeneratedPreviewUrl] = useState<string>('');
   const [copiedPromptNotice, setCopiedPromptNotice] = useState<boolean>(false);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState<boolean>(false);
+
+  // Vacancy & Automated Crowning Event State
+  const [vacatingTitle, setVacatingTitle] = useState<Championship | null>(null);
+  const [vacancyEventType, setVacancyEventType] = useState<'tournament' | 'battle_royal' | 'instant'>('tournament');
+  const [tournamentBracketSize, setTournamentBracketSize] = useState<4 | 8 | 16>(8);
+  const [battleRoyalEntrantCount, setBattleRoyalEntrantCount] = useState<number>(15);
+  const [tournamentResult, setTournamentResult] = useState<AutomatedTournamentResult | null>(null);
+  const [battleRoyalResult, setBattleRoyalResult] = useState<BattleRoyalResult | null>(null);
+  const [isSimulatingEvent, setIsSimulatingEvent] = useState<boolean>(false);
+  const [activeTournamentRoundIndex, setActiveTournamentRoundIndex] = useState<number>(0);
+  const [crowningSuccessNotice, setCrowningSuccessNotice] = useState<string | null>(null);
 
   // Form State: New / Edit Title
   const [titleForm, setTitleForm] = useState<{
@@ -416,7 +441,19 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
   // -------------------------------------------------------------
   // Title Actions: Vacate, Award, Retire, Reactivate, Delete
   // -------------------------------------------------------------
-  const handleVacateTitle = (titleId: string) => {
+  const handleInitiateVacate = (title: Championship) => {
+    setVacatingTitle(title);
+    setVacancyEventType('tournament');
+    setTournamentResult(null);
+    setBattleRoyalResult(null);
+    setIsSimulatingEvent(false);
+    setActiveTournamentRoundIndex(0);
+    const isTag = isTagChampionship(title);
+    setTournamentBracketSize(isTag ? 4 : 8);
+    setBattleRoyalEntrantCount(isTag ? 8 : 15);
+  };
+
+  const handleInstantVacate = (titleId: string) => {
     const title = promotion.titles.find(t => t.id === titleId);
     if (!title) return;
 
@@ -430,7 +467,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
             lostWeek: currentWeek,
             lostYear: currentYear,
             isCurrent: false,
-            notes: (updatedHistory[0].notes ? updatedHistory[0].notes + ' • ' : '') + 'Vacated by Head Booker'
+            notes: (updatedHistory[0].notes ? updatedHistory[0].notes + ' • ' : '') + 'Vacated by Head Booker decree'
           };
         }
         return { ...t, currentHolderIds: [], defenses: 0, history: updatedHistory };
@@ -448,6 +485,95 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
       titles: updatedTitles,
       roster: updatedRoster
     });
+
+    setCrowningSuccessNotice(`Title Declared Vacant: The ${title.name} has been stripped by Head Booker decree.`);
+    setVacatingTitle(null);
+  };
+
+  const handleVacateTitle = (titleId: string) => {
+    const title = promotion.titles.find(t => t.id === titleId);
+    if (title) {
+      handleInitiateVacate(title);
+    }
+  };
+
+  const handleSimulateTournament = () => {
+    if (!vacatingTitle) return;
+    setIsSimulatingEvent(true);
+    setTimeout(() => {
+      const result = simulateAutomatedTournamentForTitle(
+        vacatingTitle,
+        promotion,
+        tournamentBracketSize
+      );
+      setTournamentResult(result);
+      setActiveTournamentRoundIndex(0);
+      setIsSimulatingEvent(false);
+    }, 200);
+  };
+
+  const handleSimulateBattleRoyal = () => {
+    if (!vacatingTitle) return;
+    setIsSimulatingEvent(true);
+    setTimeout(() => {
+      const result = simulateBattleRoyalForTitle(
+        vacatingTitle,
+        promotion,
+        battleRoyalEntrantCount
+      );
+      setBattleRoyalResult(result);
+      setIsSimulatingEvent(false);
+    }, 200);
+  };
+
+  const handleCrownTournamentChampion = () => {
+    if (!vacatingTitle || !tournamentResult) return;
+    const res = applyVacancyCrowningResult(
+      vacatingTitle,
+      tournamentResult.winner,
+      tournamentResult.runnerUp,
+      'tournament',
+      {
+        eventName: tournamentResult.tournamentName,
+        notes: `Won ${tournamentResult.bracketSize}-superstar tournament to claim vacant championship`,
+        reignRating: `${tournamentResult.averageMatchScore}/100 Tournament Rating`,
+        matchScore: tournamentResult.averageMatchScore,
+        participantsCount: tournamentResult.participants.length
+      },
+      promotion,
+      currentWeek,
+      currentYear
+    );
+
+    onUpdatePromotion(res.updatedPromotion);
+    setCrowningSuccessNotice(`🏆 NEW CHAMPION CROWNED: ${tournamentResult.winner.name} won the ${tournamentResult.tournamentName} to become the new ${vacatingTitle.name}!`);
+    setVacatingTitle(null);
+    setTournamentResult(null);
+  };
+
+  const handleCrownBattleRoyalChampion = () => {
+    if (!vacatingTitle || !battleRoyalResult) return;
+    const res = applyVacancyCrowningResult(
+      vacatingTitle,
+      battleRoyalResult.winner,
+      battleRoyalResult.runnerUp,
+      'battle_royal',
+      {
+        eventName: battleRoyalResult.eventName,
+        notes: `Last eliminated ${battleRoyalResult.runnerUp.name} in a ${battleRoyalResult.participantCount}-superstar Battle Royal to claim the vacant title`,
+        reignRating: battleRoyalResult.ratingStars,
+        matchScore: battleRoyalResult.matchScore,
+        participantsCount: battleRoyalResult.participantCount
+      },
+      promotion,
+      currentWeek,
+      currentYear
+    );
+
+    onUpdatePromotion(res.updatedPromotion);
+    setCrowningSuccessNotice(`👑 NEW CHAMPION CROWNED: ${battleRoyalResult.winner.name} outlasted ${battleRoyalResult.participantCount} entrants in the Over-The-Top-Rope Battle Royal to capture the ${vacatingTitle.name}!`);
+    setVacatingTitle(null);
+    setBattleRoyalResult(null);
   };
 
   const handleAwardTitle = (titleId: string, wrestlerIds: string[], teamName?: string) => {
@@ -1218,6 +1344,28 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
   // -------------------------------------------------------------
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
+      {/* Crowning / Vacancy Event Celebration Banner */}
+      {crowningSuccessNotice && (
+        <div className="bg-gradient-to-r from-amber-950/90 via-zinc-900 to-amber-950/90 border border-amber-500/50 rounded-xl p-4 flex items-center justify-between gap-3 text-amber-200 text-xs font-mono shadow-xl animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-400 shrink-0">
+              <Trophy className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-amber-400 font-bold uppercase tracking-wider text-[11px]">Official Championship Announcement</div>
+              <div className="text-zinc-200 text-xs font-semibold mt-0.5">{crowningSuccessNotice}</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCrowningSuccessNotice(null)}
+            className="text-zinc-400 hover:text-white px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 transition text-[11px] font-mono shrink-0 border border-zinc-700"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-zinc-800 pb-4">
         <div>
@@ -1557,10 +1705,18 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                           )}
                         </div>
                         {isVacant ? (
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-2">
                             <span className="text-rose-400 font-bold tracking-wide">● VACANT</span>
                             {!title.isRetired && (
-                              <span className="text-[10px] text-zinc-500">Awaiting new champion</span>
+                              <button
+                                type="button"
+                                onClick={() => handleInitiateVacate(title)}
+                                className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1 transition"
+                                title="Run Tournament or Battle Royal to crown champion"
+                              >
+                                <Trophy className="w-2.5 h-2.5 text-amber-400" />
+                                <span>Crown via Event</span>
+                              </button>
                             )}
                           </div>
                         ) : (
@@ -1669,15 +1825,16 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                       </div>
 
                       {/* Quick Champion Changer / Vacate */}
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         {!isVacant && !title.isRetired ? (
                           <button
                             type="button"
-                            onClick={() => handleVacateTitle(title.id)}
-                            className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-rose-950 text-zinc-300 hover:text-rose-300 border border-zinc-700 transition"
-                            title="Strip Champion and Vacate Belt"
+                            onClick={() => handleInitiateVacate(title)}
+                            className="px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-rose-950 text-zinc-300 hover:text-rose-300 border border-zinc-700 hover:border-rose-700/50 flex items-center gap-1 transition text-xs"
+                            title="Vacate Title: Crown via Tournament or Battle Royal"
                           >
-                            Vacate
+                            <AlertTriangle className="w-3 h-3 text-amber-400" />
+                            <span>Vacate</span>
                           </button>
                         ) : null}
 
@@ -1685,12 +1842,22 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleReactivateTitle(title.id)}
-                            className="px-2.5 py-1.5 rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-800 transition"
+                            className="px-2.5 py-1.5 rounded bg-emerald-950 text-emerald-300 hover:bg-emerald-900 border border-emerald-800 transition text-xs"
                           >
                             Reactivate
                           </button>
                         ) : isVacant ? (
-                          <div className={Boolean(title.isTagTeam || title.type === 'Tag Team' || title.division === 'Tag Team' || (title.name && /tag/i.test(title.name)) || (title.history && title.history.some(h => (h.holderIds && h.holderIds.length >= 2) || (h.holderNames && (h.holderNames.includes('&') || h.holderNames.includes(' and ')))))) ? "w-56 sm:w-64" : "w-36"}>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleInitiateVacate(title)}
+                              className="px-2.5 py-1.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 transition shadow"
+                              title="Crown Champion via Tournament or Battle Royal"
+                            >
+                              <Trophy className="w-3 h-3 text-amber-400" />
+                              <span>Crown via Event</span>
+                            </button>
+                            <div className={Boolean(title.isTagTeam || title.type === 'Tag Team' || title.division === 'Tag Team' || (title.name && /tag/i.test(title.name)) || (title.history && title.history.some(h => (h.holderIds && h.holderIds.length >= 2) || (h.holderNames && (h.holderNames.includes('&') || h.holderNames.includes(' and ')))))) ? "w-56 sm:w-64" : "w-36"}>
                             {(() => {
                               const isTagTitle = Boolean(
                                 title.isTagTeam || 
@@ -1835,6 +2002,7 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
                                 </select>
                               );
                             })()}
+                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -4727,6 +4895,34 @@ export const TitlesFeudsView: React.FC<TitlesFeudsViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {/* Vacancy & Automated Crowning Event Modal */}
+      {vacatingTitle && (
+        <VacancyCrowningModal
+          vacatingTitle={vacatingTitle}
+          promotion={promotion}
+          onClose={() => setVacatingTitle(null)}
+          onInstantVacate={handleInstantVacate}
+          onCrownChampion={(title, winner, runnerUp, eventType, eventDetails) => {
+            const res = applyVacancyCrowningResult(
+              title,
+              winner,
+              runnerUp,
+              eventType,
+              eventDetails,
+              promotion,
+              currentWeek,
+              currentYear
+            );
+            onUpdatePromotion(res.updatedPromotion);
+            setCrowningSuccessNotice(
+              eventType === 'tournament'
+                ? `🏆 NEW CHAMPION CROWNED: ${winner.name} won the ${eventDetails.eventName} to become the new ${title.name}!`
+                : `👑 NEW CHAMPION CROWNED: ${winner.name} outlasted ${eventDetails.participantsCount} entrants in the Battle Royal to capture the ${title.name}!`
+            );
+            setVacatingTitle(null);
+          }}
+        />
       )}
     </div>
   );

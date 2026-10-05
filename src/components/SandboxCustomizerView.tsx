@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Promotion, Difficulty, CustomMatchRule, ThemeSettings, ThemePresetId, AccentColor, BackgroundStyle } from '../types';
+import { Promotion, Difficulty, CustomMatchRule, ThemeSettings, ThemePresetId, AccentColor, BackgroundStyle, WeeklyShow } from '../types';
 import { DEFAULT_CUSTOM_MATCH_RULES } from '../data/customDefaults';
 import { 
   THEME_PRESETS, 
@@ -9,6 +9,8 @@ import {
   getResolvedTheme 
 } from '../data/themes';
 import { formatNumber } from '../utils/format';
+import { getPromotionWeeklyShows } from '../utils/weeklyShowUtils';
+import { WeeklyShowsSettingsView } from './WeeklyShowsSettingsView';
 import { 
   Sliders, 
   Settings, 
@@ -48,7 +50,7 @@ interface SandboxCustomizerViewProps {
   onOpenSaveModal?: () => void;
 }
 
-type SettingsTab = 'theme_colors' | 'promotion_params' | 'match_builder';
+type SettingsTab = 'theme_colors' | 'weekly_shows' | 'promotion_params' | 'match_builder';
 
 export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
   promotion,
@@ -62,6 +64,7 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('theme_colors');
   const [promoForm, setPromoForm] = useState<Promotion>({ ...promotion });
+  const [weeklyShows, setWeeklyShows] = useState<WeeklyShow[]>(() => getPromotionWeeklyShows(promotion));
   const [diffState, setDiffState] = useState<Difficulty>(difficulty);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -188,8 +191,12 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
   };
 
   const handleSaveAllPromotion = () => {
+    const primary = weeklyShows.find(s => s.isPrimary) || weeklyShows[0];
     const finalPromo = {
       ...promoForm,
+      weeklyShows: weeklyShows,
+      weeklyTVShow: primary?.name || promoForm.weeklyTVShow,
+      tvNetwork: primary?.tvNetwork || promoForm.tvNetwork,
       themeSettings: currentTheme
     };
     onUpdatePromotion(finalPromo);
@@ -197,7 +204,7 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
     if (onUpdateThemeSettings) {
       onUpdateThemeSettings(currentTheme);
     }
-    showNotification('Promotion parameters, visual themes & match rules saved successfully!');
+    showNotification('Promotion parameters, weekly shows, visual themes & match rules saved successfully!');
   };
 
   // Rule Handlers
@@ -366,6 +373,19 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
         >
           <Palette className="w-4 h-4" />
           <span>Visual Theme & Color Accent</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('weekly_shows')}
+          className={`px-4 py-2 text-xs font-mono font-bold rounded-md transition flex items-center gap-2 shrink-0 ${
+            activeTab === 'weekly_shows'
+              ? 'bg-amber-500 text-black shadow'
+              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/80'
+          }`}
+        >
+          <Tv className="w-4 h-4" />
+          <span>Weekly TV Shows ({weeklyShows.length})</span>
         </button>
 
         <button
@@ -707,6 +727,29 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
       )}
 
       {/* ============================================================ */}
+      {/* TAB: WEEKLY TELEVISION SHOWS & BROADCAST PROGRAMMING         */}
+      {/* ============================================================ */}
+      {activeTab === 'weekly_shows' && (
+        <WeeklyShowsSettingsView
+          promotion={promoForm}
+          weeklyShows={weeklyShows}
+          onUpdateWeeklyShows={(updated) => {
+            setWeeklyShows(updated);
+            const primary = updated.find(s => s.isPrimary) || updated[0];
+            const updatedPromo = {
+              ...promoForm,
+              weeklyShows: updated,
+              weeklyTVShow: primary?.name || promoForm.weeklyTVShow,
+              tvNetwork: primary?.tvNetwork || promoForm.tvNetwork
+            };
+            setPromoForm(updatedPromo);
+            onUpdatePromotion(updatedPromo);
+          }}
+          showNotification={showNotification}
+        />
+      )}
+
+      {/* ============================================================ */}
       {/* TAB 2: PROMOTION IDENTITY & BROADCASTING PARAMETERS */}
       {/* ============================================================ */}
       {activeTab === 'promotion_params' && (
@@ -756,11 +799,27 @@ export const SandboxCustomizerView: React.FC<SandboxCustomizerViewProps> = ({
 
             {/* Weekly TV Show */}
             <div>
-              <label className="block text-zinc-400 mb-1">Weekly TV Show Name</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-zinc-400">Weekly TV Show Name</label>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('weekly_shows')}
+                  className="text-[10px] text-amber-400 hover:underline flex items-center gap-1 font-mono"
+                  title="Manage and add multiple weekly shows"
+                >
+                  <Tv className="w-3 h-3" />
+                  <span>Manage All ({weeklyShows.length}) &rarr;</span>
+                </button>
+              </div>
               <input
                 type="text"
                 value={promoForm.weeklyTVShow}
-                onChange={e => setPromoForm({ ...promoForm, weeklyTVShow: e.target.value })}
+                onChange={e => {
+                  const val = e.target.value;
+                  const updatedShows = weeklyShows.map(s => s.isPrimary ? { ...s, name: val } : s);
+                  setWeeklyShows(updatedShows);
+                  setPromoForm({ ...promoForm, weeklyTVShow: val, weeklyShows: updatedShows });
+                }}
                 className="w-full bg-zinc-950 border border-zinc-700 rounded px-3 py-2 text-white"
               />
             </div>

@@ -60,6 +60,7 @@ interface BookShowViewProps {
   onBackToMenu: () => void;
   onAdvanceWeek: () => void;
   onOpenGMOffice?: () => void;
+  onUpdatePromotion?: (newPromo: Promotion) => void;
 }
 
 const MATCH_TYPES: MatchType[] = [
@@ -111,7 +112,8 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
   onUpdateCard,
   onBackToMenu,
   onAdvanceWeek,
-  onOpenGMOffice
+  onOpenGMOffice,
+  onUpdatePromotion
 }) => {
   // PPV Check
   const ppvSchedule = (promotion.ppvSchedule && promotion.ppvSchedule.length > 0)
@@ -508,8 +510,38 @@ export const BookShowView: React.FC<BookShowViewProps> = ({
           </button>
           <h2 className="text-2xl font-bold text-white font-mono flex items-center gap-2">
             <span>[ 1 ] Show Booking Terminal</span>
-            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
-              {currentPPV ? currentPPV.name : promotion.weeklyTVShow}
+            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1.5">
+              {currentPPV ? (
+                <span>{currentPPV.name}</span>
+              ) : promotion.weeklyShows && promotion.weeklyShows.length > 1 ? (
+                <div className="flex items-center gap-1">
+                  <span>📺</span>
+                  <select
+                    value={promotion.activeWeeklyShowId || promotion.weeklyShows[0].id}
+                    onChange={(e) => {
+                      const selectedId = e.target.value;
+                      const selectedShow = promotion.weeklyShows?.find(s => s.id === selectedId);
+                      if (selectedShow && onUpdatePromotion) {
+                        onUpdatePromotion({
+                          ...promotion,
+                          activeWeeklyShowId: selectedId,
+                          weeklyTVShow: selectedShow.name
+                        });
+                      }
+                    }}
+                    className="bg-transparent border-none text-amber-400 font-bold focus:outline-none cursor-pointer"
+                    title="Switch active weekly show for this booking session"
+                  >
+                    {promotion.weeklyShows.map(s => (
+                      <option key={s.id} value={s.id} className="bg-zinc-900 text-white font-mono">
+                        {s.name} ({s.dayOfWeek || 'Weekly'}{s.isPrimary ? ' • Flagship' : ''})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <span>{promotion.weeklyTVShow}</span>
+              )}
             </span>
           </h2>
         </div>

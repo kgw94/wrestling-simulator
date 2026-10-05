@@ -1014,6 +1014,7 @@ export default function App() {
             onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
             onAdvanceWeek={handleAdvanceWeek}
             onOpenGMOffice={() => setGameState(prev => ({ ...prev, currentView: 'gm_office' }))}
+            onUpdatePromotion={newPromo => setGameState(prev => ({ ...prev, promotion: newPromo }))}
           />
         )}
 
