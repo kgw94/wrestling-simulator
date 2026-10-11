@@ -44,9 +44,14 @@ import { TournamentsView } from './components/TournamentsView';
 import { DevelopmentalView } from './components/DevelopmentalView';
 import { BrandSplitView } from './components/BrandSplitView';
 import { ForbiddenDoorView } from './components/ForbiddenDoorView';
+import { ShowHistoryView } from './components/ShowHistoryView';
+import { RatingsWarView } from './components/RatingsWarView';
 import { SaveGameModal } from './components/SaveGameModal';
 import { getDefaultDevelopmentalTerritory, getDefaultBrandSplit } from './data/developmentalAndBrandDefaults';
 import { getDefaultForbiddenDoorState } from './data/forbiddenDoorDefaults';
+import { getInitialShowHistory } from './data/showHistoryDefaults';
+import { getDefaultRatingsWarState } from './data/rivalPromotionsDefaults';
+import { getDefaultTelevisionDeal } from './data/televisionDealsDefaults';
 import { getDefaultGMForPromotion, DEFAULT_AVAILABLE_GMS } from './engine/gmEngine';
 import { ThemeSettings } from './types';
 import { DEFAULT_THEME_SETTINGS, getResolvedTheme } from './data/themes';
@@ -116,6 +121,20 @@ export default function App() {
               careerInjuriesCount: w.careerInjuriesCount || 0,
               injuryHistory: w.injuryHistory || []
             }));
+
+            // Upgrade existing saves with fewer than 40 wrestlers to include the expanded defaults
+            if (parsed.promotion.roster.length < 40) {
+              const matchedPreset = PRESET_PROMOTIONS.find(p => p.id === parsed.promotion.id) || PRESET_PROMOTIONS[0];
+              const existingIds = new Set(parsed.promotion.roster.map((w: any) => w.id));
+              const missingWrestlers = matchedPreset.roster.filter(w => !existingIds.has(w.id));
+              parsed.promotion.roster = [...parsed.promotion.roster, ...missingWrestlers];
+            }
+          }
+
+          if (Array.isArray(parsed.freeAgents) && parsed.freeAgents.length < 15) {
+            const existingFaIds = new Set(parsed.freeAgents.map((w: any) => w.id));
+            const missingFAs = INITIAL_FREE_AGENTS.filter(w => !existingFaIds.has(w.id));
+            parsed.freeAgents = [...parsed.freeAgents, ...missingFAs];
           }
           if (Array.isArray(parsed.financialHistory)) {
             parsed.financialHistory = parsed.financialHistory.map((f: any) => ({
@@ -346,6 +365,18 @@ export default function App() {
           if (!parsed.promotion.forbiddenDoor) {
             parsed.promotion.forbiddenDoor = getDefaultForbiddenDoorState(parsed.promotion);
           }
+          if (!parsed.showHistory || parsed.showHistory.length === 0) {
+            parsed.showHistory = getInitialShowHistory(parsed.promotion);
+          }
+          if (!parsed.promotion.ratingsWar) {
+            parsed.promotion.ratingsWar = getDefaultRatingsWarState(parsed.promotion);
+          }
+          if (!parsed.ratingsWar) {
+            parsed.ratingsWar = parsed.promotion.ratingsWar;
+          }
+          if (!parsed.promotion.tvDeal) {
+            parsed.promotion.tvDeal = getDefaultTelevisionDeal(parsed.promotion);
+          }
           return parsed;
         }
       }
@@ -374,7 +405,9 @@ export default function App() {
       themeSettings: DEFAULT_THEME_SETTINGS,
       currentGM: getDefaultGMForPromotion(PRESET_PROMOTIONS[0].style),
       availableGMs: DEFAULT_AVAILABLE_GMS,
-      forbiddenDoor: getDefaultForbiddenDoorState(PRESET_PROMOTIONS[0])
+      forbiddenDoor: getDefaultForbiddenDoorState(PRESET_PROMOTIONS[0]),
+      ratingsWar: getDefaultRatingsWarState(PRESET_PROMOTIONS[0]),
+      tvDeal: getDefaultTelevisionDeal(PRESET_PROMOTIONS[0])
     };
 
     return {
@@ -385,7 +418,8 @@ export default function App() {
       promotion: initPromo,
       freeAgents: INITIAL_FREE_AGENTS,
       currentShowCard: [],
-      showHistory: [],
+      showHistory: getInitialShowHistory(initPromo),
+      ratingsWar: initPromo.ratingsWar,
       financialHistory: [],
       newsArchive: [
         {
@@ -447,7 +481,9 @@ export default function App() {
       themeSettings: activeTheme,
       currentGM: selectedPromotion.currentGM || getDefaultGMForPromotion(selectedPromotion.style),
       availableGMs: selectedPromotion.availableGMs || DEFAULT_AVAILABLE_GMS,
-      forbiddenDoor: selectedPromotion.forbiddenDoor || getDefaultForbiddenDoorState(selectedPromotion)
+      forbiddenDoor: selectedPromotion.forbiddenDoor || getDefaultForbiddenDoorState(selectedPromotion),
+      ratingsWar: selectedPromotion.ratingsWar || getDefaultRatingsWarState(selectedPromotion),
+      tvDeal: selectedPromotion.tvDeal || getDefaultTelevisionDeal(selectedPromotion)
     };
     const topFeud = promoWithDefaults.feuds.slice().sort((a, b) => b.heat - a.heat)[0];
     setGameState({
@@ -458,7 +494,8 @@ export default function App() {
       promotion: promoWithDefaults,
       freeAgents: INITIAL_FREE_AGENTS,
       currentShowCard: [],
-      showHistory: [],
+      showHistory: getInitialShowHistory(promoWithDefaults),
+      ratingsWar: promoWithDefaults.ratingsWar,
       financialHistory: [],
       newsArchive: [
         {
@@ -610,6 +647,10 @@ export default function App() {
         setGameState(prev => ({ ...prev, currentView: 'forbidden_door' }));
       } else if (e.key === 'b' || e.key === 'B') {
         setGameState(prev => ({ ...prev, currentView: 'brand_split' }));
+      } else if (e.key === 'r' || e.key === 'R') {
+        setGameState(prev => ({ ...prev, currentView: 'ratings_war' }));
+      } else if (e.key === 'y' || e.key === 'Y') {
+        setGameState(prev => ({ ...prev, currentView: 'show_history' }));
       } else if (e.key === 'n' || e.key === 'N') {
         setGameState(prev => ({ ...prev, currentView: 'news' }));
       } else if (e.key === 'Escape') {
@@ -1302,6 +1343,30 @@ export default function App() {
               }))
             }
             onNavigate={view => setGameState(prev => ({ ...prev, currentView: view }))}
+          />
+        )}
+
+        {gameState.currentView === 'show_history' && (
+          <ShowHistoryView
+            promotion={gameState.promotion}
+            showHistory={gameState.showHistory}
+            onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
+          />
+        )}
+
+        {gameState.currentView === 'ratings_war' && (
+          <RatingsWarView
+            promotion={gameState.promotion}
+            currentWeek={gameState.currentWeek}
+            currentYear={gameState.currentYear}
+            onUpdatePromotion={newPromo =>
+              setGameState(prev => ({
+                ...prev,
+                promotion: newPromo,
+                ratingsWar: newPromo.ratingsWar || prev.ratingsWar
+              }))
+            }
+            onBackToMenu={() => setGameState(prev => ({ ...prev, currentView: 'menu' }))}
           />
         )}
 

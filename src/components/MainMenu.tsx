@@ -22,7 +22,10 @@ import {
   Split,
   Globe,
   Crown,
-  Gavel
+  Gavel,
+  History,
+  Swords,
+  Building2
 } from 'lucide-react';
 import { formatNumber } from '../utils/format';
 import { getResolvedTheme } from '../data/themes';
@@ -621,6 +624,82 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           );
         })()}
 
+        {/* Feature: Show History & Match Archives */}
+        <button
+          type="button"
+          onClick={() => onNavigate('show_history')}
+          className="group text-left p-5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/80 hover:bg-zinc-900/90 transition shadow-sm flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="px-2.5 py-1 rounded bg-amber-500/20 text-amber-400 font-mono text-xs font-bold border border-amber-500/40 group-hover:bg-amber-500 group-hover:text-black transition">
+                [ H ]
+              </span>
+              <History className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 transition" />
+            </div>
+            <h3 className="font-bold text-white text-base font-mono group-hover:text-amber-300 transition">
+              Show History & Match Archives
+            </h3>
+            <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
+              Inspect multi-year broadcast archives, all-time record books, historical attendances, 5-star classics, and segment-by-segment scorecards.
+            </p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-amber-400">
+            <span>{gameState.showHistory?.length || 0} Broadcasts Archived • Scorecards</span>
+            <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+          </div>
+        </button>
+
+        {/* Feature: AI Rival Promotion Ratings Battle */}
+        {(() => {
+          const war = promotion.ratingsWar || gameState.ratingsWar;
+          const pWins = war?.playerWins || 0;
+          const rWins = war?.rivalWins || 0;
+          const streak = war?.currentStreak || 0;
+
+          return (
+            <button
+              type="button"
+              onClick={() => onNavigate('ratings_war')}
+              className={`group text-left p-5 rounded-xl bg-zinc-900 border transition shadow-sm flex flex-col justify-between ${
+                streak > 0 
+                  ? 'border-emerald-500/60 hover:border-emerald-400' 
+                  : streak < 0 
+                  ? 'border-rose-500/60 hover:border-rose-400' 
+                  : 'border-zinc-800 hover:border-amber-500/80'
+              }`}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 rounded bg-rose-500/20 text-rose-300 font-mono text-xs font-bold border border-rose-500/40 group-hover:bg-rose-500 group-hover:text-black transition">
+                      [ R ]
+                    </span>
+                    {streak !== 0 && (
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                        streak > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+                      }`}>
+                        {streak > 0 ? `🔥 +${streak} Win Streak` : `⚠ ${Math.abs(streak)} Deficit`}
+                      </span>
+                    )}
+                  </div>
+                  <Swords className="w-5 h-5 text-zinc-500 group-hover:text-rose-400 transition" />
+                </div>
+                <h3 className="font-bold text-white text-base font-mono group-hover:text-rose-300 transition">
+                  AI Rival Promotion Ratings Battle
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
+                  Fight head-to-head in Monday Night Wars television warfare against rival promotions. Track viewer battle scorecards, market share, and launch counter-programming.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-rose-400">
+                <span>War Record: {pWins}W - {rWins}L • {war?.marketSharePercentage || 50}% Audience</span>
+                <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
+              </div>
+            </button>
+          );
+        })()}
+
         {/* Feature: Developmental Territory & Dojo */}
         <button
           type="button"
@@ -635,14 +714,16 @@ export const MainMenu: React.FC<MainMenuProps> = ({
               <GraduationCap className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 transition" />
             </div>
             <h3 className="font-bold text-white text-base font-mono group-hover:text-amber-300 transition">
-              Developmental Dojo & Farm System
+              Developmental Academies & Farm System
             </h3>
             <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed font-sans">
-              Cultivate rookie prospects at the Performance Center, appoint legendary head coaches, dispatch talent on international learning excursions, and execute main roster call-ups.
+              Cultivate rookie prospects across regional feeder territories and dojos. Run weekly territory TV shows, conduct tryout combines, appoint legendary trainers, and execute call-ups.
             </p>
           </div>
           <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-xs font-mono text-amber-400">
-            <span>{promotion.developmentalTerritory?.traineeIds?.length || 0} Trainees • {promotion.developmentalTerritory?.excursions?.length || 0} Overseas</span>
+            <span>
+              {promotion.developmentalTerritory?.academies?.length || 2} Academies/Territories • {promotion.developmentalTerritory?.traineeIds?.length || 0} Trainees • Territory TV
+            </span>
             <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition" />
           </div>
         </button>

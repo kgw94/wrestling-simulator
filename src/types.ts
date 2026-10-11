@@ -383,6 +383,23 @@ export interface ShowResult {
   };
   companyPrestigeEarned?: number;
   farewellTourHighlights?: string[];
+  rivalWarBattle?: RivalWeeklyBattleResult;
+  tvDealOutcome?: {
+    networkName: string;
+    rightsFeePaid: number;
+    adRevenueEarned: number;
+    demandsMetCount: number;
+    demandsTotalCount: number;
+    demandResults: {
+      demandTitle: string;
+      met: boolean;
+      impactDescription: string;
+    }[];
+    netRatingModifier: number;
+    weeksRemainingOnContract: number;
+    satisfactionDelta: number;
+    adRevenueTier: AdRevenueTier;
+  };
 }
 
 export type ChampionshipType = 
@@ -629,6 +646,82 @@ export interface Promotion {
   resolvedBiddingWars?: ContractBiddingWar[];
   wrestlerCourtCases?: WrestlerCourtCase[];
   resolvedCourtCases?: WrestlerCourtCase[];
+  ratingsWar?: RatingsWarState;
+  tvDeal?: TelevisionNetworkDeal;
+}
+
+export type NetworkTier = 
+  | 'Local / Public Access' 
+  | 'Regional Sports Cable' 
+  | 'Cult Hardcore Cable'
+  | 'National Prime Cable' 
+  | 'Major Broadcast Television' 
+  | 'Global Streaming Titan';
+
+export type AdRevenueTier = 
+  | 'Low Commercial Load' 
+  | 'Standard Ad Load' 
+  | 'Heavy Commercial Blitz' 
+  | 'High-Roller Luxury Sponsors';
+
+export type NetworkDemandType = 
+  | 'main_event_quality' 
+  | 'youth_movement' 
+  | 'gimmick_carnage' 
+  | 'tag_team_focus' 
+  | 'family_friendly' 
+  | 'women_division' 
+  | 'veteran_marquee';
+
+export interface NetworkDemand {
+  id: string;
+  type: NetworkDemandType;
+  title: string;
+  description: string;
+  targetValue?: number;
+  ratingBonus: number; // applied to show rating if satisfied
+  ratingPenalty: number; // deducted if failed
+  satisfactionImpact: number; // delta to network satisfaction
+  isMet?: boolean;
+}
+
+export interface DemandComplianceRecord {
+  week: number;
+  demandsMet: number;
+  demandsTotal: number;
+  ratingDeltaApplied: number;
+  executiveNote: string;
+}
+
+export interface TelevisionNetworkDeal {
+  networkId: string;
+  networkName: string;
+  tier: NetworkTier;
+  broadcastSlot: string; // e.g. "Monday Night Primetime (8:00 PM)"
+  weeklyRightsFee: number; // guaranteed weekly rights payment
+  contractWeeksTotal: number; // total duration of contract
+  contractWeeksRemaining: number; // countdown
+  minRatingTarget: number; // contractual minimum rating
+  penaltyPerRatingMiss?: number; // penalty per point missed
+  adRevenueTier: AdRevenueTier;
+  networkDemands: NetworkDemand[];
+  demandsComplianceHistory?: DemandComplianceRecord[];
+  negotiationStatus?: 'Active' | 'Renewal Window' | 'Expired' | 'Emergency Syndication';
+}
+
+export interface AvailableNetworkOffer {
+  id: string;
+  name: string;
+  tier: NetworkTier;
+  logoColor: string;
+  badgeClass: string;
+  baseWeeklyRightsFee: number;
+  minPrestigeRequired: number;
+  minRatingTarget: number;
+  preferredSlot: string;
+  suggestedContractWeeks: number[];
+  demands: NetworkDemand[];
+  flavorText: string;
 }
 
 export type AllianceTier = 
@@ -750,6 +843,59 @@ export interface DevelopmentalHistoryLog {
   details: string;
 }
 
+export type AcademyFacilityTier = 'Indie Gym' | 'Regional Training Dojo' | 'Performance Center' | 'State-of-the-Art Mega Complex';
+
+export type AcademySpecialization = 
+  | 'Balanced Athletics' 
+  | 'Strong Style & Striking' 
+  | 'Lucha Libre Aerial' 
+  | 'Technical Catch Submission' 
+  | 'Hardcore & Outlaw Brawling' 
+  | 'Sports Entertainment & Charisma';
+
+export interface WrestlingAcademy {
+  id: string;
+  name: string;
+  shortName: string;
+  type: 'Academy' | 'Territory' | 'Dojo';
+  location: string;
+  country: string;
+  facilityTier: AcademyFacilityTier;
+  specialization: AcademySpecialization;
+  headCoachId: string;
+  headCoachName: string;
+  headCoachPerk: string;
+  weeklyUpkeep: number;
+  reputation: number; // 0-100
+  traineeIds: string[]; // wrestler IDs assigned here
+  graduatesCount: number;
+  territoryWeeklyShow?: {
+    showName: string;
+    dayOfWeek: DayOfWeek;
+    lastShowRating?: number;
+    lastShowRecap?: string;
+  };
+}
+
+export interface DevelopmentalShowResult {
+  id: string;
+  week: number;
+  year: number;
+  academyId: string;
+  academyName: string;
+  showName: string;
+  averageScore: number;
+  standoutPerformerName: string;
+  standoutStatGained: string;
+  matches: {
+    matchName: string;
+    winnerName: string;
+    loserName: string;
+    rating: string;
+    skillProgress: string;
+  }[];
+}
+
 export interface DevelopmentalTerritory {
   id: string;
   name: string;
@@ -766,6 +912,65 @@ export interface DevelopmentalTerritory {
   excursions: DevelopmentalExcursion[];
   graduatesCount: number;
   historyLogs: DevelopmentalHistoryLog[];
+  // Multi-Academy / Farm System network
+  academies?: WrestlingAcademy[];
+  activeAcademyId?: string;
+  developmentalShowHistory?: DevelopmentalShowResult[];
+  veteranMentors?: { wrestlerId: string; wrestlerName: string; academyId: string; role: 'player_coach' | 'rehab' }[];
+}
+
+export interface RivalPromotion {
+  id: string;
+  name: string;
+  shortName: string;
+  primaryColor: string;
+  weeklyShowName: string;
+  networkName: string;
+  networkTimeSlot: string;
+  headBooker: string;
+  style: string;
+  prestige: number; // 0-100
+  fanbase: number;
+  averageWeeklyRating: number; // e.g. 3.25
+  keyStars: string[];
+  champions: { titleName: string; holderName: string }[];
+  currentTopFeud: string;
+  ratingsHistory: { week: number; year: number; rating: number; viewers: number; showScore: number }[];
+  isPrimaryRival: boolean;
+}
+
+export interface RivalWeeklyBattleResult {
+  week: number;
+  year: number;
+  playerShowName: string;
+  playerRating: number;
+  playerViewers: number;
+  playerScore: number;
+  rivals: {
+    rivalId: string;
+    rivalName: string;
+    rivalShowName: string;
+    rating: number;
+    viewers: number;
+    score: number;
+    mainEvent: string;
+    headline: string;
+  }[];
+  winnerName: string;
+  isPlayerWinner: boolean;
+  marginViewers: number; // positive if player won, negative if rival won
+  narrativeRecap: string;
+}
+
+export interface RatingsWarState {
+  rivalPromotions: RivalPromotion[];
+  weeklyBattles: RivalWeeklyBattleResult[];
+  playerWins: number;
+  rivalWins: number;
+  ties: number;
+  currentStreak: number; // positive = player win streak, negative = rival win streak
+  marketSharePercentage: number; // Player's % of national wrestling viewers (e.g. 52%)
+  warMoraleStatus: 'Dominating the Airwaves' | 'Narrow Edge' | 'Fierce Deadlock' | 'Under Fire from Competitors' | 'Crisis: Losing Ratings Battle';
 }
 
 export interface Brand {
@@ -1027,6 +1232,8 @@ export interface HallOfFameInductee {
 export interface FinancialReport {
   week: number;
   tvRevenue: number;
+  tvRightsFee?: number;
+  tvAdRevenue?: number;
   ticketSales: number;
   merchSales: number;
   ppvSales?: number;
@@ -1067,6 +1274,8 @@ export type GameView =
   | 'developmental'
   | 'brand_split'
   | 'forbidden_door'
+  | 'show_history'
+  | 'ratings_war'
   | 'settings';
 
 export interface GameState {
@@ -1085,4 +1294,5 @@ export interface GameState {
   currentView: GameView;
   latestShowResult?: ShowResult;
   themeSettings?: ThemeSettings;
+  ratingsWar?: RatingsWarState;
 }

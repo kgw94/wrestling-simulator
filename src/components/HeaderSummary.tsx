@@ -1,6 +1,6 @@
 import React from 'react';
 import { Promotion, GameState } from '../types';
-import { DollarSign, Star, Flame, Calendar, Tv, Users, ShieldAlert, Palette, Settings, Briefcase, HardDrive } from 'lucide-react';
+import { DollarSign, Star, Flame, Calendar, Tv, Users, ShieldAlert, Palette, Settings, Briefcase, HardDrive, History, Swords } from 'lucide-react';
 import { formatNumber } from '../utils/format';
 import { getResolvedTheme } from '../data/themes';
 
@@ -49,6 +49,24 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({ gameState, onNavig
                     className="w-2 h-2 rounded-full inline-block border border-white/40" 
                     style={{ backgroundColor: resolvedTheme.accentDef.hex }} 
                   />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.('show_history')}
+                  className="hidden md:flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 text-[11px] font-mono transition"
+                  title="Open Show History & Match Archives [H]"
+                >
+                  <History className="w-3 h-3 text-amber-400" />
+                  <span>History ({gameState.showHistory?.length || 0})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.('ratings_war')}
+                  className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] font-mono transition"
+                  title="Open AI Rival Promotion Ratings Battle [R]"
+                >
+                  <Swords className="w-3 h-3 text-rose-400" />
+                  <span>Ratings War</span>
                 </button>
                 <button
                   type="button"

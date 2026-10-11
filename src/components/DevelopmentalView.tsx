@@ -5,13 +5,17 @@ import {
   DevelopmentalTerritory, 
   DevelopmentalFocus,
   ExcursionDestination,
-  DevelopmentalExcursion
+  DevelopmentalExcursion,
+  WrestlingAcademy,
+  AcademyFacilityTier,
+  DevelopmentalShowResult
 } from '../types';
 import { 
   getDefaultDevelopmentalTerritory, 
   generateScoutedProspect, 
   EXCURSION_DESTINATIONS,
-  DEVELOPMENTAL_COACHES 
+  DEVELOPMENTAL_COACHES,
+  AVAILABLE_NEW_ACADEMIES_TEMPLATES 
 } from '../data/developmentalAndBrandDefaults';
 import { formatNumber } from '../utils/format';
 import { 
@@ -39,7 +43,10 @@ import {
   UserPlus,
   ShieldCheck,
   Zap,
-  Info
+  Info,
+  Building2,
+  Radio,
+  ArrowRightLeft
 } from 'lucide-react';
 
 interface DevelopmentalViewProps {
@@ -58,8 +65,13 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
   onBackToMenu
 }) => {
   const territory: DevelopmentalTerritory = promotion.developmentalTerritory || getDefaultDevelopmentalTerritory(promotion);
+  const defaultAcademies = getDefaultDevelopmentalTerritory(promotion).academies || [];
+  const academies: WrestlingAcademy[] = territory.academies && territory.academies.length > 0 
+    ? territory.academies 
+    : defaultAcademies;
 
-  const [activeTab, setActiveTab] = useState<'trainees' | 'excursions' | 'facility' | 'history'>('trainees');
+  const [activeTab, setActiveTab] = useState<'academies' | 'trainees' | 'excursions' | 'facility' | 'history'>('academies');
+  const [selectedAcademyId, setSelectedAcademyId] = useState<string>(territory.activeAcademyId || academies[0]?.id || '');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Modals state
@@ -72,17 +84,308 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
 
   const [isDemoteModalOpen, setIsDemoteModalOpen] = useState(false);
   const [isCoachModalOpen, setIsCoachModalOpen] = useState(false);
+  const [isAffiliateModalOpen, setIsAffiliateModalOpen] = useState(false);
+  const [isCombineModalOpen, setIsCombineModalOpen] = useState(false);
+  const [isMentorModalOpen, setIsMentorModalOpen] = useState(false);
+  const [selectedTransferTrainee, setSelectedTransferTrainee] = useState<Wrestler | null>(null);
+  const [devShowResult, setDevShowResult] = useState<DevelopmentalShowResult | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  const activeAcademy = academies.find(a => a.id === selectedAcademyId) || academies[0];
+
   // Trainees on roster
   const trainees = promotion.roster.filter(w => territory.traineeIds.includes(w.id));
   const mainRosterStars = promotion.roster.filter(w => !territory.traineeIds.includes(w.id) && !w.isRetired);
 
-  // 1. Scout and Sign New Prospect
+  // Run Weekly Territory Show Simulation
+  const handleRunTerritoryShow = (academyId: string) => {
+    const targetAcademy = academies.find(a => a.id === academyId) || activeAcademy;
+    if (!targetAcademy) return;
+
+    // Trainees assigned to this academy (or fallback to general trainees)
+    let academyTrainees = promotion.roster.filter(w => targetAcademy.traineeIds?.includes(w.id));
+    if (academyTrainees.length < 2) {
+      academyTrainees = trainees;
+    }
+
+    if (academyTrainees.length < 2) {
+      showToast(`At least 2 trainees are needed to hold a developmental card. Scout rookies or reassign talent first!`);
+      return;
+    }
+
+    // Generate 2-3 matches
+    const tCopy = [...academyTrainees].sort(() => Math.random() - 0.5);
+    const w1 = tCopy[0];
+    const w2 = tCopy[1];
+    const w3 = tCopy[2] || tCopy[0];
+    const w4 = tCopy[3] || tCopy[1];
+
+    const match1Winner = Math.random() < 0.5 ? w1 : w2;
+    const match1Loser = match1Winner.id === w1.id ? w2 : w1;
+    const match2Winner = Math.random() < 0.5 ? w3 : w4;
+    const match2Loser = match2Winner.id === w3.id ? w4 : w3;
+
+    // Stat bonuses: trainees gain workrate, stamina or mic
+    const updatedRoster = promotion.roster.map(star => {
+      if (star.id === w1.id || star.id === w2.id || star.id === w3.id || star.id === w4.id) {
+        return {
+          ...star,
+          workrate: Math.min(100, star.workrate + 2),
+          stamina: Math.min(100, star.stamina + 1),
+          micSkills: Math.min(100, star.micSkills + 1),
+          overness: Math.min(100, star.overness + 1)
+        };
+      }
+      return star;
+    });
+
+    const showScore = Math.floor(Math.random() * 12) + 68; // 68 - 80
+    const showName = targetAcademy.territoryWeeklyShow?.showName || `${targetAcademy.name} Showcase`;
+
+    const showResultObj: DevelopmentalShowResult = {
+      id: `dev-show-${Date.now()}`,
+      week: currentWeek,
+      year: currentYear,
+      academyId: targetAcademy.id,
+      academyName: targetAcademy.name,
+      showName,
+      averageScore: showScore,
+      standoutPerformerName: match1Winner.name,
+      standoutStatGained: '+2 Workrate, +1 Stamina, +1 Mic Skills',
+      matches: [
+        {
+          matchName: 'Main Event Developmental Clash',
+          winnerName: match1Winner.name,
+          loserName: match1Loser.name,
+          rating: showScore >= 75 ? '★★★½' : '★★★',
+          skillProgress: '+2 Workrate & Ring Psychology'
+        },
+        {
+          matchName: 'Academy Tag / Scramble Showcase',
+          winnerName: match2Winner.name,
+          loserName: match2Loser.name,
+          rating: '★★¾',
+          skillProgress: '+1 Stamina & Conditioning'
+        }
+      ]
+    };
+
+    const updatedAcademies = academies.map(a => {
+      if (a.id === targetAcademy.id) {
+        return {
+          ...a,
+          reputation: Math.min(100, a.reputation + 1),
+          territoryWeeklyShow: {
+            showName: a.territoryWeeklyShow?.showName || showName,
+            dayOfWeek: a.territoryWeeklyShow?.dayOfWeek || 'Wednesday',
+            lastShowRating: showScore,
+            lastShowRecap: `${match1Winner.name} scored a showcase victory in ${showName} (Score: ${showScore}/100).`
+          }
+        };
+      }
+      return a;
+    });
+
+    const updatedTerritory: DevelopmentalTerritory = {
+      ...territory,
+      academies: updatedAcademies,
+      developmentalShowHistory: [showResultObj, ...(territory.developmentalShowHistory || [])].slice(0, 15),
+      historyLogs: [
+        {
+          id: `dev-show-log-${Date.now()}`,
+          week: currentWeek,
+          year: currentYear,
+          wrestlerName: match1Winner.name,
+          type: 'scout',
+          headline: `${showName} Broadcast (Score: ${showScore}/100)`,
+          details: `Territory show completed! ${match1Winner.name} starred as rookie standout. All participating talent gained +2 Workrate.`
+        },
+        ...territory.historyLogs
+      ]
+    };
+
+    onUpdatePromotion({
+      ...promotion,
+      roster: updatedRoster,
+      developmentalTerritory: updatedTerritory
+    });
+
+    setDevShowResult(showResultObj);
+    showToast(`Ran ${showName}! Trainees gained +2 Workrate and match experience.`);
+  };
+
+  // Upgrade Facility Tier
+  const handleUpgradeFacilityTier = (academyId: string) => {
+    const targetAcademy = academies.find(a => a.id === academyId) || activeAcademy;
+    if (!targetAcademy) return;
+
+    let nextTier: AcademyFacilityTier = 'Regional Training Dojo';
+    let cost = 25000;
+
+    if (targetAcademy.facilityTier === 'Indie Gym') {
+      nextTier = 'Regional Training Dojo';
+      cost = 25000;
+    } else if (targetAcademy.facilityTier === 'Regional Training Dojo') {
+      nextTier = 'Performance Center';
+      cost = 50000;
+    } else if (targetAcademy.facilityTier === 'Performance Center') {
+      nextTier = 'State-of-the-Art Mega Complex';
+      cost = 90000;
+    } else {
+      showToast(`This academy already features a State-of-the-Art Mega Complex!`);
+      return;
+    }
+
+    if (promotion.budget < cost) {
+      showToast(`Insufficient funds ($${formatNumber(cost)} needed to upgrade facility tier).`);
+      return;
+    }
+
+    const updatedAcademies = academies.map(a => {
+      if (a.id === targetAcademy.id) {
+        return {
+          ...a,
+          facilityTier: nextTier,
+          reputation: Math.min(100, a.reputation + 6),
+          weeklyUpkeep: a.weeklyUpkeep + 2500
+        };
+      }
+      return a;
+    });
+
+    onUpdatePromotion({
+      ...promotion,
+      budget: promotion.budget - cost,
+      developmentalTerritory: {
+        ...territory,
+        academies: updatedAcademies
+      }
+    });
+
+    showToast(`Upgraded ${targetAcademy.name} to ${nextTier}! Accelerated training bonuses unlocked.`);
+  };
+
+  // Affiliate New Academy
+  const handleAffiliateNewAcademy = (template: typeof AVAILABLE_NEW_ACADEMIES_TEMPLATES[0]) => {
+    const cost = 40000;
+    if (promotion.budget < cost) {
+      showToast(`Insufficient funds ($${formatNumber(cost)} needed to affiliate new academy).`);
+      return;
+    }
+
+    const newAcademy: WrestlingAcademy = {
+      id: `acad-${Date.now()}`,
+      ...template,
+      traineeIds: [],
+      graduatesCount: 0
+    };
+
+    const updatedAcademies = [...academies, newAcademy];
+
+    onUpdatePromotion({
+      ...promotion,
+      budget: promotion.budget - cost,
+      developmentalTerritory: {
+        ...territory,
+        academies: updatedAcademies,
+        historyLogs: [
+          {
+            id: `acad-new-${Date.now()}`,
+            week: currentWeek,
+            year: currentYear,
+            wrestlerName: 'Promotion Board',
+            type: 'scout',
+            headline: `New Farm Territory Affiliated: ${newAcademy.name}`,
+            details: `Expanded farm system into ${newAcademy.location} specializing in ${newAcademy.specialization}.`
+          },
+          ...territory.historyLogs
+        ]
+      }
+    });
+
+    setIsAffiliateModalOpen(false);
+    showToast(`Affiliated ${newAcademy.name} into your developmental farm system!`);
+  };
+
+  // Transfer Trainee between Academies
+  const handleTransferTrainee = (wrestlerId: string, destAcademyId: string) => {
+    const updatedAcademies = academies.map(a => {
+      const filtered = (a.traineeIds || []).filter(id => id !== wrestlerId);
+      if (a.id === destAcademyId) {
+        return { ...a, traineeIds: [...filtered, wrestlerId] };
+      }
+      return { ...a, traineeIds: filtered };
+    });
+
+    onUpdatePromotion({
+      ...promotion,
+      developmentalTerritory: {
+        ...territory,
+        academies: updatedAcademies
+      }
+    });
+
+    setSelectedTransferTrainee(null);
+    showToast(`Transferred trainee to destination academy.`);
+  };
+
+  // Scout Rookie Combine (3 prospects at once)
+  const handleRunCombine = () => {
+    const cost = 12000;
+    if (promotion.budget < cost) {
+      showToast(`Insufficient budget ($${formatNumber(cost)} required to host open tryout combine).`);
+      return;
+    }
+
+    const p1 = generateScoutedProspect(promotion);
+    const p2 = generateScoutedProspect(promotion);
+    const p3 = generateScoutedProspect(promotion);
+
+    const updatedRoster = [...promotion.roster, p1, p2, p3];
+    const targetAcadId = activeAcademy?.id || academies[0]?.id;
+
+    const updatedAcademies = academies.map(a => {
+      if (a.id === targetAcadId) {
+        return {
+          ...a,
+          traineeIds: [...(a.traineeIds || []), p1.id, p2.id, p3.id]
+        };
+      }
+      return a;
+    });
+
+    onUpdatePromotion({
+      ...promotion,
+      budget: promotion.budget - cost,
+      roster: updatedRoster,
+      developmentalTerritory: {
+        ...territory,
+        traineeIds: [...territory.traineeIds, p1.id, p2.id, p3.id],
+        academies: updatedAcademies,
+        historyLogs: [
+          {
+            id: `combine-${Date.now()}`,
+            week: currentWeek,
+            year: currentYear,
+            wrestlerName: `${p1.name}, ${p2.name}, ${p3.name}`,
+            type: 'scout',
+            headline: `Open Rookie Scouting Combine: 3 Prospects Signed`,
+            details: `Recruited 3 promising rookies (${p1.name}, ${p2.name}, ${p3.name}) and assigned them to ${activeAcademy?.name || 'Developmental'}.`
+          },
+          ...territory.historyLogs
+        ]
+      }
+    });
+
+    setIsCombineModalOpen(false);
+    showToast(`Conducted Rookie Tryout Combine! Signed ${p1.name}, ${p2.name}, and ${p3.name}.`);
+  };
+
+  // 1. Scout and Sign Single Prospect
   const handleScoutProspect = () => {
     const cost = 5000;
     if (promotion.budget < cost) {
@@ -92,9 +395,22 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
 
     const newProspect = generateScoutedProspect(promotion);
     const updatedRoster = [...promotion.roster, newProspect];
+    const targetAcadId = activeAcademy?.id || academies[0]?.id;
+
+    const updatedAcademies = academies.map(a => {
+      if (a.id === targetAcadId) {
+        return {
+          ...a,
+          traineeIds: [...(a.traineeIds || []), newProspect.id]
+        };
+      }
+      return a;
+    });
+
     const updatedTerritory: DevelopmentalTerritory = {
       ...territory,
       traineeIds: [...territory.traineeIds, newProspect.id],
+      academies: updatedAcademies,
       historyLogs: [
         {
           id: `log-${Date.now()}`,
@@ -103,7 +419,7 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
           wrestlerName: newProspect.name,
           type: 'scout',
           headline: `Scouted Prospect Signed: ${newProspect.name}`,
-          details: `Signed 20-year-old ${newProspect.style} ${newProspect.name} ("${newProspect.nickname}") to a developmental contract.`
+          details: `Signed 20-year-old ${newProspect.style} ${newProspect.name} ("${newProspect.nickname}") to ${activeAcademy?.name || 'developmental'}.`
         },
         ...territory.historyLogs
       ]
@@ -116,7 +432,7 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
       developmentalTerritory: updatedTerritory
     });
 
-    showToast(`Scouted and signed rookie sensation ${newProspect.name} to the Performance Center!`);
+    showToast(`Scouted and signed rookie ${newProspect.name} to ${activeAcademy?.name || 'the Dojo'}!`);
   };
 
   // 2. Call Up to Main Roster
@@ -475,11 +791,24 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-zinc-800 font-mono text-xs">
+      <div className="flex border-b border-zinc-800 font-mono text-xs overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => setActiveTab('academies')}
+          className={`px-4 py-2.5 font-bold transition flex items-center gap-2 border-b-2 whitespace-nowrap ${
+            activeTab === 'academies'
+              ? 'border-amber-500 text-amber-400 bg-amber-500/5'
+              : 'border-transparent text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>Farm System & Academies ({academies.length})</span>
+        </button>
+
         <button
           type="button"
           onClick={() => setActiveTab('trainees')}
-          className={`px-4 py-2.5 font-bold transition flex items-center gap-2 border-b-2 ${
+          className={`px-4 py-2.5 font-bold transition flex items-center gap-2 border-b-2 whitespace-nowrap ${
             activeTab === 'trainees'
               ? 'border-amber-500 text-amber-400 bg-amber-500/5'
               : 'border-transparent text-zinc-400 hover:text-white'
@@ -492,7 +821,7 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('excursions')}
-          className={`px-4 py-2.5 font-bold transition flex items-center gap-2 border-b-2 ${
+          className={`px-4 py-2.5 font-bold transition flex items-center gap-2 border-b-2 whitespace-nowrap ${
             activeTab === 'excursions'
               ? 'border-amber-500 text-amber-400 bg-amber-500/5'
               : 'border-transparent text-zinc-400 hover:text-white'
@@ -505,7 +834,7 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('facility')}
-          className={`px-4 py-2.5 font-bold transition flex items-center gap-2 border-b-2 ${
+          className={`px-4 py-2.5 font-bold transition flex items-center gap-2 border-b-2 whitespace-nowrap ${
             activeTab === 'facility'
               ? 'border-amber-500 text-amber-400 bg-amber-500/5'
               : 'border-transparent text-zinc-400 hover:text-white'
@@ -518,7 +847,7 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
         <button
           type="button"
           onClick={() => setActiveTab('history')}
-          className={`px-4 py-2.5 font-bold transition flex items-center gap-2 border-b-2 ${
+          className={`px-4 py-2.5 font-bold transition flex items-center gap-2 border-b-2 whitespace-nowrap ${
             activeTab === 'history'
               ? 'border-amber-500 text-amber-400 bg-amber-500/5'
               : 'border-transparent text-zinc-400 hover:text-white'
@@ -528,6 +857,209 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
           <span>Academy Archives</span>
         </button>
       </div>
+
+      {/* TAB 0: FARM SYSTEM & ACADEMIES */}
+      {activeTab === 'academies' && (
+        <div className="space-y-6">
+          {/* Farm System Quick Actions */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-zinc-900 border border-zinc-800 p-4 rounded-xl font-mono text-xs">
+            <div>
+              <span className="text-amber-400 font-bold uppercase flex items-center gap-1.5">
+                <Building2 className="w-4 h-4" /> Developmental Feeder Network
+              </span>
+              <p className="text-zinc-400 text-[11px] font-sans mt-0.5">
+                Affiliate regional territories, run developmental showcase cards to accelerate rookie skills, and upgrade dojos.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsCombineModalOpen(true)}
+                className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-bold transition flex items-center gap-1.5 border border-zinc-700"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Rookie Combine ($12k)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAffiliateModalOpen(true)}
+                className="px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold transition flex items-center gap-1.5 shadow"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Affiliate Territory ($40k)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Academies Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {academies.map(acad => {
+              const acadTrainees = promotion.roster.filter(w => (acad.traineeIds || []).includes(w.id));
+              const isSelected = acad.id === selectedAcademyId;
+
+              return (
+                <div
+                  key={acad.id}
+                  className={`p-5 rounded-2xl border transition shadow-sm space-y-4 flex flex-col justify-between ${
+                    isSelected
+                      ? 'bg-zinc-900 border-amber-500/80 shadow-amber-500/5'
+                      : 'bg-zinc-900/80 border-zinc-800 hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="space-y-3">
+                    {/* Header */}
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 text-xs font-mono">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            acad.type === 'Territory' 
+                              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40' 
+                              : acad.type === 'Dojo'
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          }`}>
+                            {acad.type}
+                          </span>
+                          <span className="text-zinc-500">•</span>
+                          <span className="text-zinc-400">{acad.location}</span>
+                        </div>
+                        <h3 className="text-lg font-bold text-white font-mono mt-1">
+                          {acad.name}
+                        </h3>
+                      </div>
+
+                      <div className="text-right font-mono">
+                        <span className="text-[10px] text-zinc-500 uppercase block">Reputation</span>
+                        <span className="text-sm font-bold text-amber-400">{acad.reputation}/100</span>
+                      </div>
+                    </div>
+
+                    {/* Facility Tier & Specialization */}
+                    <div className="grid grid-cols-2 gap-2 font-mono text-xs">
+                      <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80">
+                        <span className="text-[10px] text-zinc-500 uppercase block">Facility Tier</span>
+                        <div className="text-zinc-200 font-bold truncate mt-0.5">{acad.facilityTier}</div>
+                      </div>
+
+                      <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80">
+                        <span className="text-[10px] text-zinc-500 uppercase block">Specialization</span>
+                        <div className="text-amber-300 font-bold truncate mt-0.5">{acad.specialization}</div>
+                      </div>
+                    </div>
+
+                    {/* Head Coach */}
+                    <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80 text-xs font-mono">
+                      <span className="text-[10px] text-zinc-500 uppercase block">Head Coach & Perk</span>
+                      <div className="text-white font-semibold mt-0.5">{acad.headCoachName}</div>
+                      <div className="text-[11px] text-amber-400/90 truncate">{acad.headCoachPerk}</div>
+                    </div>
+
+                    {/* Territory Weekly Show */}
+                    {acad.territoryWeeklyShow && (
+                      <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-mono">
+                          <span className="text-sky-400 font-bold flex items-center gap-1.5">
+                            <Radio className="w-3.5 h-3.5 animate-pulse" />
+                            {acad.territoryWeeklyShow.showName}
+                          </span>
+                          <span className="text-zinc-500 text-[10px]">
+                            Every {acad.territoryWeeklyShow.dayOfWeek}
+                          </span>
+                        </div>
+                        {acad.territoryWeeklyShow.lastShowRecap && (
+                          <p className="text-[11px] text-zinc-400 font-sans italic line-clamp-2">
+                            "{acad.territoryWeeklyShow.lastShowRecap}"
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRunTerritoryShow(acad.id)}
+                          className="w-full py-2 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 font-mono font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-sky-400" />
+                          <span>Simulate {acad.territoryWeeklyShow.showName} (+Workrate XP)</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Stationed Trainees */}
+                    <div className="text-xs font-mono text-zinc-400">
+                      <div className="flex items-center justify-between mb-1">
+                        <span>Stationed Trainees ({acadTrainees.length})</span>
+                        <span className="text-[11px] text-emerald-400">${formatNumber(acad.weeklyUpkeep)}/wk upkeep</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {acadTrainees.length === 0 ? (
+                          <span className="text-zinc-600 italic text-[11px]">No talent stationed here yet.</span>
+                        ) : (
+                          acadTrainees.map(t => (
+                            <span key={t.id} className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-zinc-300 text-[11px]">
+                              {t.name} ({t.workrate} WR)
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="pt-3 border-t border-zinc-800 flex items-center justify-between gap-2 font-mono text-xs">
+                    <button
+                      type="button"
+                      onClick={() => handleUpgradeFacilityTier(acad.id)}
+                      className="text-amber-400 hover:text-amber-300 font-bold text-xs flex items-center gap-1"
+                    >
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                      <span>Upgrade Tier</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedAcademyId(acad.id);
+                        setActiveTab('trainees');
+                      }}
+                      className="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold transition border border-zinc-700"
+                    >
+                      Manage Trainees ({acadTrainees.length})
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Developmental Show History Log */}
+          {(territory.developmentalShowHistory || []).length > 0 && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-3">
+              <h4 className="text-xs font-bold text-zinc-400 uppercase font-mono tracking-wider">
+                Recent Developmental Territory Show Results
+              </h4>
+              <div className="space-y-2">
+                {(territory.developmentalShowHistory || []).slice(0, 5).map(sh => (
+                  <div key={sh.id} className="bg-zinc-950 p-3.5 rounded-lg border border-zinc-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs font-mono">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-400 font-bold">{sh.showName}</span>
+                        <span className="text-zinc-500">Wk {sh.week}, {sh.year}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-[10px]">Score: {sh.averageScore}/100</span>
+                      </div>
+                      <div className="text-zinc-400 font-sans mt-0.5">
+                        Rookie Standout: <strong className="text-emerald-400">{sh.standoutPerformerName}</strong> ({sh.standoutStatGained})
+                      </div>
+                    </div>
+                    <div className="text-zinc-400 text-right">
+                      {sh.matches[0]?.matchName}: <span className="text-zinc-200">{sh.matches[0]?.winnerName} ({sh.matches[0]?.rating})</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* TAB 1: ACTIVE TRAINEES */}
       {activeTab === 'trainees' && (
@@ -1068,6 +1600,183 @@ export const DevelopmentalView: React.FC<DevelopmentalViewProps> = ({
                 className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: AFFILIATE NEW ACADEMY / FEEDER TERRITORY */}
+      {isAffiliateModalOpen && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-amber-500/50 rounded-2xl max-w-xl w-full p-6 space-y-4 shadow-2xl font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-bold text-white">Affiliate New Feeder Territory ($40,000)</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAffiliateModalOpen(false)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-zinc-300 font-sans text-xs">
+              Expand your developmental footprint across regional and international territories. Each territory features distinct coaching specializations and runs its own weekly showcase show:
+            </p>
+
+            <div className="space-y-3">
+              {AVAILABLE_NEW_ACADEMIES_TEMPLATES.map((tmpl, idx) => (
+                <div
+                  key={idx}
+                  className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 flex flex-col justify-between space-y-2 hover:border-zinc-700 transition"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-white text-sm flex items-center gap-2">
+                        <span>{tmpl.name}</span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300">
+                          {tmpl.type}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-zinc-400">
+                        {tmpl.location} • Upkeep: ${formatNumber(tmpl.weeklyUpkeep)}/wk
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleAffiliateNewAcademy(tmpl)}
+                      className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold transition shadow shrink-0"
+                    >
+                      Affiliate ($40k)
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-zinc-400 font-sans pt-1 border-t border-zinc-900">
+                    <strong className="text-zinc-300 font-mono">Specialization: </strong>
+                    {tmpl.specialization} ({tmpl.headCoachPerk})
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setIsAffiliateModalOpen(false)}
+                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ROOKIE SCOUTING COMBINE */}
+      {isCombineModalOpen && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-amber-500/50 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl font-mono text-xs text-center">
+            <Sparkles className="w-10 h-10 text-amber-400 mx-auto" />
+            <div>
+              <h3 className="text-lg font-bold text-white">Open Rookie Tryout Combine</h3>
+              <p className="text-xs text-zinc-400 font-sans mt-1">
+                Conduct an intensive 3-day scouting combine featuring college athletes, second-generation legacies, and standout indie trainees.
+              </p>
+            </div>
+
+            <div className="bg-zinc-950 p-3.5 rounded-xl border border-zinc-800 text-left space-y-1.5">
+              <div className="flex justify-between text-zinc-300">
+                <span>Combine Assessment Cost:</span>
+                <strong className="text-amber-400">$12,000</strong>
+              </div>
+              <div className="flex justify-between text-zinc-300">
+                <span>Prospects Signed:</span>
+                <strong className="text-emerald-400">3 Blue-Chip Rookies</strong>
+              </div>
+              <div className="flex justify-between text-zinc-300">
+                <span>Assigned Facility:</span>
+                <strong className="text-white truncate">{activeAcademy?.name || 'Performance Center'}</strong>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsCombineModalOpen(false)}
+                className="px-4 py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRunCombine}
+                className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold transition shadow"
+              >
+                Begin Combine ($12,000)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DEVELOPMENTAL SHOW RESULT */}
+      {devShowResult && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-sky-500/50 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl font-mono text-xs">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Radio className="w-5 h-5 text-sky-400 animate-pulse" />
+                <h3 className="text-base font-bold text-white">{devShowResult.showName}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDevShowResult(null)}
+                className="text-zinc-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-center font-mono">
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
+                <span className="text-[10px] text-zinc-500 uppercase block">Show Rating</span>
+                <span className="text-xl font-bold text-amber-400">{devShowResult.averageScore}/100</span>
+              </div>
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
+                <span className="text-[10px] text-zinc-500 uppercase block">Standout Rookie</span>
+                <span className="text-xs font-bold text-emerald-400 mt-1 block truncate">{devShowResult.standoutPerformerName}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h5 className="text-[10px] font-bold text-zinc-400 uppercase">Card Matches & Skill Progression</h5>
+              {devShowResult.matches.map((m, mIdx) => (
+                <div key={mIdx} className="bg-zinc-950 p-3 rounded-lg border border-zinc-800 space-y-1">
+                  <div className="flex items-center justify-between text-white font-bold">
+                    <span>{m.matchName}</span>
+                    <span className="text-amber-400">{m.rating}</span>
+                  </div>
+                  <div className="text-[11px] text-emerald-400">
+                    Winner: {m.winnerName} def. {m.loserName}
+                  </div>
+                  <div className="text-[10px] text-cyan-300">
+                    Progress: {m.skillProgress}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setDevShowResult(null)}
+                className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition"
+              >
+                Close Results
               </button>
             </div>
           </div>

@@ -6,7 +6,9 @@ import {
   Brand, 
   DraftPick,
   ExcursionDestination,
-  DevelopmentalFocus
+  DevelopmentalFocus,
+  WrestlingAcademy,
+  DevelopmentalShowResult
 } from '../types';
 
 export const EXCURSION_DESTINATIONS: {
@@ -79,9 +81,66 @@ export const DEVELOPMENTAL_COACHES = [
   }
 ];
 
+export const AVAILABLE_NEW_ACADEMIES_TEMPLATES: Omit<WrestlingAcademy, 'id' | 'traineeIds' | 'graduatesCount'>[] = [
+  {
+    name: 'Lucha Libre Escuela Del Sol',
+    shortName: 'ESCUELA',
+    type: 'Dojo',
+    location: 'Mexico City, Mexico',
+    country: 'Mexico',
+    facilityTier: 'Regional Training Dojo',
+    specialization: 'Lucha Libre Aerial',
+    headCoachId: 'coach-dorado',
+    headCoachName: 'El Místico Dorado',
+    headCoachPerk: 'Aerial Maestro: +3 Stamina & +2 High-Flying Workrate',
+    weeklyUpkeep: 6000,
+    reputation: 82,
+    territoryWeeklyShow: {
+      showName: 'Lucha del Futuro',
+      dayOfWeek: 'Sunday'
+    }
+  },
+  {
+    name: 'Blackcraft Underground Fight Guild',
+    shortName: 'BLACKCRAFT',
+    type: 'Territory',
+    location: 'Philadelphia, PA',
+    country: 'United States',
+    facilityTier: 'Indie Gym',
+    specialization: 'Hardcore & Outlaw Brawling',
+    headCoachId: 'coach-kowalski',
+    headCoachName: '“Mad Dog” Frank Kowalski',
+    headCoachPerk: 'Brawling Hardship: +2 Stamina & +2 Toughness',
+    weeklyUpkeep: 4500,
+    reputation: 74,
+    territoryWeeklyShow: {
+      showName: 'Underground Fight Night',
+      dayOfWeek: 'Thursday'
+    }
+  },
+  {
+    name: 'British Catch-As-Catch-Can Guild',
+    shortName: 'CATCH GUILD',
+    type: 'Academy',
+    location: 'Manchester, England',
+    country: 'United Kingdom',
+    facilityTier: 'Regional Training Dojo',
+    specialization: 'Technical Catch Submission',
+    headCoachId: 'coach-sterling',
+    headCoachName: 'Jack Sterling',
+    headCoachPerk: 'Pure Mat Technician: +3 Workrate Drills',
+    weeklyUpkeep: 6800,
+    reputation: 80,
+    territoryWeeklyShow: {
+      showName: 'Catch Academy Showcase',
+      dayOfWeek: 'Tuesday'
+    }
+  }
+];
+
 export function getDefaultDevelopmentalTerritory(promotion: Promotion): DevelopmentalTerritory {
   const isJapan = promotion.style === 'Lucha & Puroresu';
-  const name = isJapan 
+  const primaryName = isJapan 
     ? `${promotion.shortName} Young Lion Dojo`
     : `${promotion.shortName} NextGen Performance Center`;
   
@@ -96,9 +155,80 @@ export function getDefaultDevelopmentalTerritory(promotion: Promotion): Developm
     ? potentialTrainees.slice(0, 3).map(w => w.id)
     : [];
 
+  const primaryAcademy: WrestlingAcademy = {
+    id: `acad-pc-${promotion.id}`,
+    name: primaryName,
+    shortName: isJapan ? 'DOJO' : 'NEXTGEN',
+    type: 'Academy',
+    location,
+    country: isJapan ? 'Japan' : 'United States',
+    facilityTier: 'Performance Center',
+    specialization: isJapan ? 'Strong Style & Striking' : 'Balanced Athletics',
+    headCoachId: 'coach-sterling',
+    headCoachName: '“The Sovereign” Jack Sterling',
+    headCoachPerk: 'Legendary Ring General: +2 Workrate & +1 Overness per training cycle',
+    weeklyUpkeep: 8500,
+    reputation: 84,
+    traineeIds: traineeIds.slice(0, 2),
+    graduatesCount: 0,
+    territoryWeeklyShow: {
+      showName: `${promotion.shortName} NextGen TV`,
+      dayOfWeek: 'Wednesday',
+      lastShowRating: 72,
+      lastShowRecap: 'Rookies demonstrated clean chain-wrestling fundamentals and conditioning.'
+    }
+  };
+
+  const feederTerritory: WrestlingAcademy = {
+    id: `acad-feeder-${promotion.id}`,
+    name: `${promotion.shortName} Sunshine Pro Wrestling`,
+    shortName: 'SUNSHINE',
+    type: 'Territory',
+    location: 'Tampa, Florida',
+    country: 'United States',
+    facilityTier: 'Regional Training Dojo',
+    specialization: 'Sports Entertainment & Charisma',
+    headCoachId: 'coach-steele',
+    headCoachName: 'Victoria “Iron Empress” Steele',
+    headCoachPerk: 'Championship Mindset: +2 Mic Skills & +2 Morale',
+    weeklyUpkeep: 5500,
+    reputation: 76,
+    traineeIds: traineeIds.slice(2, 4),
+    graduatesCount: 0,
+    territoryWeeklyShow: {
+      showName: 'Sunshine Wrestling Spotlight',
+      dayOfWeek: 'Saturday',
+      lastShowRating: 68,
+      lastShowRecap: 'Exciting regional card drawing energetic local crowd reaction.'
+    }
+  };
+
+  const initialShowHistory: DevelopmentalShowResult[] = [
+    {
+      id: `dev-show-init-${Date.now()}`,
+      week: 52,
+      year: 2025,
+      academyId: primaryAcademy.id,
+      academyName: primaryAcademy.name,
+      showName: `${promotion.shortName} NextGen TV #48`,
+      averageScore: 72,
+      standoutPerformerName: 'Young Rookie Class',
+      standoutStatGained: '+2 Workrate & +1 Overness',
+      matches: [
+        {
+          matchName: 'Future Stars Showcase Singles',
+          winnerName: 'Top Academy Prospect',
+          loserName: 'Sparring Partner',
+          rating: '★★★1/4',
+          skillProgress: '+2 Workrate'
+        }
+      ]
+    }
+  ];
+
   return {
     id: `dev-${promotion.id}`,
-    name,
+    name: primaryName,
     shortName: isJapan ? 'DOJO' : 'NEXTGEN',
     brandColor: '#f59e0b',
     location,
@@ -107,7 +237,7 @@ export function getDefaultDevelopmentalTerritory(promotion: Promotion): Developm
     headCoachPerk: 'Legendary Ring General: +2 Workrate & +1 Overness per training cycle',
     focusArea: 'balanced',
     weeklyBudgetCost: 8500,
-    reputation: 78,
+    reputation: 80,
     traineeIds,
     excursions: [],
     graduatesCount: 0,
@@ -118,10 +248,14 @@ export function getDefaultDevelopmentalTerritory(promotion: Promotion): Developm
         year: 2026,
         wrestlerName: 'Promotion Board',
         type: 'scout',
-        headline: `${name} Officially Commissioned`,
-        details: `Established world-class developmental facility in ${location} with Head Coach Jack Sterling to cultivate the future stars of ${promotion.name}.`
+        headline: `${primaryName} Farm System Commissioned`,
+        details: `Established multi-tier developmental academies with Performance Center in ${location} and affiliated regional feeder territory to cultivate the next generation.`
       }
-    ]
+    ],
+    academies: [primaryAcademy, feederTerritory],
+    activeAcademyId: primaryAcademy.id,
+    developmentalShowHistory: initialShowHistory,
+    veteranMentors: []
   };
 }
 

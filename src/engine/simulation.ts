@@ -16,7 +16,9 @@ import {
   BackstageClique,
   ContractBiddingWar,
   ContractBid,
-  WrestlerCourtCase
+  WrestlerCourtCase,
+  TelevisionNetworkDeal,
+  DemandComplianceRecord
 } from '../types';
 import { 
   DEFAULT_PPV_CALENDAR, 
@@ -30,6 +32,10 @@ import {
   generateBiddingWarForWrestler,
   evaluateWrestlerBiddingDecision
 } from '../data/backstageDefaults';
+import {
+  getDefaultTelevisionDeal,
+  AD_REVENUE_TIERS_CONFIG
+} from '../data/televisionDealsDefaults';
 import { generateGMPostShowDebrief, generateGMProposal } from './gmEngine';
 import { 
   validateMatchTitleGender, 
@@ -42,6 +48,7 @@ import {
   applyTournamentCompletionEffects,
   simulateTournamentMatchOutcome 
 } from './tournamentEngine';
+import { simulateWeeklyRatingsWar } from './rivalSimulationEngine';
 
 export function calculateStarRating(score: number): { stars: number; starString: string } {
   if (score >= 95) return { stars: 5.0, starString: '5.00 Stars ★★★★★' };
@@ -469,6 +476,159 @@ export function calculateShowResult(
     overallScore = Math.round((mainEventScore * 0.35) + (upperMidcardScore * 0.25) + (avgOther * 0.40));
   }
 
+  // Television Deal & Demands Evaluation
+  const tvDeal = promotion.tvDeal || getDefaultTelevisionDeal(promotion);
+  const adConfig = AD_REVENUE_TIERS_CONFIG[tvDeal.adRevenueTier] || AD_REVENUE_TIERS_CONFIG['Standard Ad Load'];
+  
+  const demandResults: {
+    demandTitle: string;
+    met: boolean;
+    impactDescription: string;
+  }[] = [];
+  let demandsRatingDelta = 0;
+  let demandsSatisfactionDelta = 0;
+  let demandsMetCount = 0;
+
+  const extremeMatchNames = ['hardcore', 'steel cage', 'tlc', 'ladder', 'street fight', 'first blood', 'hell in a cell', 'falls count anywhere', 'last man standing', 'i quit', 'deathmatch', 'barbed wire', 'unsanctioned'];
+
+  (tvDeal.networkDemands || []).forEach(demand => {
+    let met = false;
+    let impactDesc = '';
+
+    if (demand.type === 'main_event_quality') {
+      const target = demand.targetValue || 75;
+      if (mainEventScore >= target) {
+        met = true;
+        impactDesc = `Main Event scored ${mainEventScore} (Target: ${target}+) → +${demand.ratingBonus} Rating Boost!`;
+        demandsRatingDelta += demand.ratingBonus;
+        demandsSatisfactionDelta += demand.satisfactionImpact;
+      } else {
+        met = false;
+        impactDesc = `Main Event scored ${mainEventScore} (Target: ${target}+) → -${demand.ratingPenalty} Rating Penalty.`;
+        demandsRatingDelta -= demand.ratingPenalty;
+        demandsSatisfactionDelta -= demand.satisfactionImpact;
+      }
+    } else if (demand.type === 'youth_movement') {
+      const targetCount = demand.targetValue || 2;
+      const bookedYouthSet = new Set<string>();
+      evaluations.forEach(ev => {
+        ev.segment.participantIds.forEach(id => {
+          const w = promotion.roster.find(r => r.id === id);
+          if (w && w.age <= 28) bookedYouthSet.add(w.id);
+        });
+      });
+      if (bookedYouthSet.size >= targetCount) {
+        met = true;
+        impactDesc = `Featured ${bookedYouthSet.size} athletes aged 28 & under (Target: ${targetCount}) → +${demand.ratingBonus} Rating Boost!`;
+        demandsRatingDelta += demand.ratingBonus;
+        demandsSatisfactionDelta += demand.satisfactionImpact;
+      } else {
+        met = false;
+        impactDesc = `Only booked ${bookedYouthSet.size} under-28 athletes (Required: ${targetCount}) → -${demand.ratingPenalty} Rating Penalty.`;
+        demandsRatingDelta -= demand.ratingPenalty;
+        demandsSatisfactionDelta -= demand.satisfactionImpact;
+      }
+    } else if (demand.type === 'gimmick_carnage') {
+      const hasGimmick = evaluations.some(ev => 
+        ev.segment.category === 'Match' && (
+          extremeMatchNames.some(g => (ev.segment.matchType || '').toLowerCase().includes(g)) ||
+          ev.segment.customMatchRuleId !== undefined
+        )
+      );
+      if (hasGimmick) {
+        met = true;
+        impactDesc = `High-octane stunt / gimmick contest delivered → +${demand.ratingBonus} Rating Boost!`;
+        demandsRatingDelta += demand.ratingBonus;
+        demandsSatisfactionDelta += demand.satisfactionImpact;
+      } else {
+        met = false;
+        impactDesc = `No extreme gimmick / stunt contest booked → -${demand.ratingPenalty} Rating Penalty.`;
+        demandsRatingDelta -= demand.ratingPenalty;
+        demandsSatisfactionDelta -= demand.satisfactionImpact;
+      }
+    } else if (demand.type === 'family_friendly') {
+      const violated = evaluations.some(ev => 
+        ev.segment.category === 'Match' && ['hardcore', 'first blood', 'deathmatch', 'hell in a cell', 'barbed wire', 'unsanctioned'].some(v => 
+          (ev.segment.matchType || '').toLowerCase().includes(v)
+        )
+      );
+      if (!violated) {
+        met = true;
+        impactDesc = `Clean PG broadcast standards upheld → +${demand.ratingBonus} Rating Boost!`;
+        demandsRatingDelta += demand.ratingBonus;
+        demandsSatisfactionDelta += demand.satisfactionImpact;
+      } else {
+        met = false;
+        impactDesc = `Extreme violence / blood rule breached! Sponsors outraged → -${demand.ratingPenalty} Rating Penalty.`;
+        demandsRatingDelta -= demand.ratingPenalty;
+        demandsSatisfactionDelta -= demand.satisfactionImpact * 2;
+      }
+    } else if (demand.type === 'tag_team_focus') {
+      const hasTag = evaluations.some(ev => 
+        ev.segment.category === 'Match' && (ev.segment.matchType === 'Tag Team' || ev.segment.matchType === '6-Man Tag')
+      );
+      if (hasTag) {
+        met = true;
+        impactDesc = `Tag Team division featured on card → +${demand.ratingBonus} Rating Boost!`;
+        demandsRatingDelta += demand.ratingBonus;
+        demandsSatisfactionDelta += demand.satisfactionImpact;
+      } else {
+        met = false;
+        impactDesc = `No tag team or trios contest featured → -${demand.ratingPenalty} Rating Penalty.`;
+        demandsRatingDelta -= demand.ratingPenalty;
+        demandsSatisfactionDelta -= demand.satisfactionImpact;
+      }
+    } else if (demand.type === 'women_division') {
+      const hasWomen = evaluations.some(ev => 
+        ev.segment.participantIds.some(id => {
+          const w = promotion.roster.find(r => r.id === id);
+          return w && w.gender === 'Female';
+        })
+      );
+      if (hasWomen) {
+        met = true;
+        impactDesc = `Women's division spotlight booked → +${demand.ratingBonus} Rating Boost!`;
+        demandsRatingDelta += demand.ratingBonus;
+        demandsSatisfactionDelta += demand.satisfactionImpact;
+      } else {
+        met = false;
+        impactDesc = `No women's division presence on broadcast → -${demand.ratingPenalty} Rating Penalty.`;
+        demandsRatingDelta -= demand.ratingPenalty;
+        demandsSatisfactionDelta -= demand.satisfactionImpact;
+      }
+    } else if (demand.type === 'veteran_marquee') {
+      const hasMarquee = (mainEvent?.segment.participantIds || []).some(id => {
+        const w = promotion.roster.find(r => r.id === id);
+        return w && (w.overness >= (demand.targetValue || 80) || w.age >= 35);
+      });
+      if (hasMarquee) {
+        met = true;
+        impactDesc = `Marquee superstar headlined the broadcast → +${demand.ratingBonus} Rating Boost!`;
+        demandsRatingDelta += demand.ratingBonus;
+        demandsSatisfactionDelta += demand.satisfactionImpact;
+      } else {
+        met = false;
+        impactDesc = `Main Event lacked top-tier marquee star power → -${demand.ratingPenalty} Rating Penalty.`;
+        demandsRatingDelta -= demand.ratingPenalty;
+        demandsSatisfactionDelta -= demand.satisfactionImpact;
+      }
+    }
+
+    if (met) demandsMetCount++;
+    demandResults.push({
+      demandTitle: demand.title,
+      met,
+      impactDescription: impactDesc
+    });
+  });
+
+  // Apply Ad Revenue Tier rating impact
+  const adRatingModifier = adConfig.ratingModifier;
+  const netRatingModifier = demandsRatingDelta + adRatingModifier;
+
+  // Apply modifiers to overallScore
+  overallScore = Math.min(100, Math.max(10, overallScore + netRatingModifier));
+
   // If this is a PPV or Supercard, apply marquee prestige bonus
   if (currentPPV) {
     overallScore = Math.min(100, overallScore + Math.round((currentPPV.prestigeBonus || 10) * 0.4));
@@ -537,6 +697,18 @@ export function calculateShowResult(
     topSegmentScore,
     mainEventScore,
     networkFeedback,
+    tvDealOutcome: {
+      networkName: tvDeal.networkName,
+      rightsFeePaid: tvDeal.weeklyRightsFee,
+      adRevenueEarned: Math.round(((fanbase || 50000) * 0.45 * (tvRating / 2.0)) * adConfig.multiplier),
+      demandsMetCount,
+      demandsTotalCount: (tvDeal.networkDemands || []).length,
+      demandResults,
+      netRatingModifier,
+      weeksRemainingOnContract: Math.max(0, (tvDeal.contractWeeksRemaining ?? 24) - 1),
+      satisfactionDelta: demandsSatisfactionDelta,
+      adRevenueTier: tvDeal.adRevenueTier
+    },
     gmFeedback: promotion.currentGM ? {
       gmName: promotion.currentGM.name,
       gmAvatar: promotion.currentGM.avatar,
@@ -1052,7 +1224,58 @@ export function advanceWeekEngine(
     });
   }
 
-  // 5. Financial Calculation
+  // 5. Television Deal & Financial Calculation
+  let updatedTvDeal: TelevisionNetworkDeal = promotion.tvDeal 
+    ? { ...promotion.tvDeal } 
+    : getDefaultTelevisionDeal(promotion);
+
+  const prevWeeks = updatedTvDeal.contractWeeksRemaining ?? 24;
+  const newContractWeeksRemaining = Math.max(0, prevWeeks - 1);
+  updatedTvDeal.contractWeeksRemaining = newContractWeeksRemaining;
+
+  // Status updates & contract expiration/renewal warnings
+  if (newContractWeeksRemaining === 0) {
+    updatedTvDeal.negotiationStatus = 'Expired';
+    newNews.push({
+      id: `news-tv-expired-${Date.now()}`,
+      week: currentWeek,
+      category: 'Promotion',
+      importance: 'High',
+      headline: `BROADCAST ALERT: TV Deal with ${updatedTvDeal.networkName} Has Expired!`,
+      details: `${promotion.name}'s multi-week broadcast agreement has concluded. Until a new contract is signed in Booker Hub > Corporate Finances, shows operate on emergency syndication with 50% reduced ad rates.`
+    });
+  } else if (newContractWeeksRemaining <= 4) {
+    updatedTvDeal.negotiationStatus = 'Renewal Window';
+    if (newContractWeeksRemaining === 4 || newContractWeeksRemaining === 2) {
+      newNews.push({
+        id: `news-tv-renewal-${Date.now()}-${newContractWeeksRemaining}`,
+        week: currentWeek,
+        category: 'Promotion',
+        importance: 'Medium',
+        headline: `BROADCAST NOTICE: ${updatedTvDeal.networkName} Contract Entering Final ${newContractWeeksRemaining} Weeks`,
+        details: `The broadcast contract with ${updatedTvDeal.networkName} will expire soon. Open Corporate Finances to negotiate an extension, adjust ad tiers, or explore rival network offers.`
+      });
+    }
+  }
+
+  // Record compliance history from showResult
+  const demandsOutcome = showResult.tvDealOutcome;
+  if (demandsOutcome) {
+    const compRecord: DemandComplianceRecord = {
+      week: currentWeek,
+      demandsMet: demandsOutcome.demandsMetCount,
+      demandsTotal: demandsOutcome.demandsTotalCount,
+      ratingDeltaApplied: demandsOutcome.netRatingModifier,
+      executiveNote: demandsOutcome.demandsMetCount === demandsOutcome.demandsTotalCount 
+        ? `${updatedTvDeal.networkName} executive suits were delighted: All broadcast mandates satisfied (+${demandsOutcome.netRatingModifier} rating effect tonight).`
+        : `${updatedTvDeal.networkName} executive memo: Only ${demandsOutcome.demandsMetCount}/${demandsOutcome.demandsTotalCount} network mandates complied with (${demandsOutcome.netRatingModifier >= 0 ? '+' : ''}${demandsOutcome.netRatingModifier} rating effect).`
+    };
+    updatedTvDeal.demandsComplianceHistory = [
+      compRecord,
+      ...(updatedTvDeal.demandsComplianceHistory || []).slice(0, 15)
+    ];
+  }
+
   const currentBudget = (promotion && typeof promotion.budget === 'number' && !isNaN(promotion.budget)) ? promotion.budget : 2000000;
   const prodCostWeekly = (promotion && typeof promotion.productionCostWeekly === 'number' && !isNaN(promotion.productionCostWeekly)) ? promotion.productionCostWeekly : 25000;
   const safeAttendance = (showResult && typeof showResult.attendance === 'number' && !isNaN(showResult.attendance)) ? showResult.attendance : 2000;
@@ -1061,7 +1284,15 @@ export function advanceWeekEngine(
   const safeScore = (showResult && typeof showResult.overallScore === 'number' && !isNaN(showResult.overallScore)) ? showResult.overallScore : 65;
 
   const totalPayroll = updatedRoster.reduce((sum, w) => sum + (typeof w.salary === 'number' && !isNaN(w.salary) ? w.salary : 5000), 0);
-  const tvRevenue = Math.round(currentBudget * 0.02 * (safeTvRating / 2.5));
+
+  // Television revenue breakdown: Guaranteed Rights Fee + Managed Ad Tiers
+  const rightsFeePaid = updatedTvDeal.negotiationStatus === 'Expired' 
+    ? Math.round(updatedTvDeal.weeklyRightsFee * 0.35) 
+    : updatedTvDeal.weeklyRightsFee;
+  const adRate = AD_REVENUE_TIERS_CONFIG[updatedTvDeal.adRevenueTier] || AD_REVENUE_TIERS_CONFIG['Standard Ad Load'];
+  const baseAdRevenue = Math.round((promotion.fanbase || 50000) * 0.45 * (safeTvRating / 2.0));
+  const adRevenueEarned = Math.round(baseAdRevenue * adRate.multiplier * (updatedTvDeal.negotiationStatus === 'Expired' ? 0.5 : 1.0));
+  const tvRevenue = rightsFeePaid + adRevenueEarned;
   const ticketSales = safeGateRevenue;
   const merchSales = Math.round(safeAttendance * (safeScore / 10));
   const ppvSales = showResult.ppvRevenue || 0;
@@ -1210,6 +1441,8 @@ export function advanceWeekEngine(
   const financialReport: FinancialReport = {
     week: currentWeek,
     tvRevenue,
+    tvRightsFee: rightsFeePaid,
+    tvAdRevenue: adRevenueEarned,
     ticketSales,
     merchSales,
     ppvSales,
@@ -1223,17 +1456,22 @@ export function advanceWeekEngine(
 
   // 6. Network Satisfaction update
   let satisfactionDelta = 0;
-  if (showResult.overallScore >= promotion.minNetworkRating + 8) {
+  if (showResult.overallScore >= updatedTvDeal.minRatingTarget + 8) {
     satisfactionDelta = +3;
-  } else if (showResult.overallScore >= promotion.minNetworkRating) {
+  } else if (showResult.overallScore >= updatedTvDeal.minRatingTarget) {
     satisfactionDelta = +1;
-  } else if (showResult.overallScore < promotion.minNetworkRating - 10) {
+  } else if (showResult.overallScore < updatedTvDeal.minRatingTarget - 10) {
     satisfactionDelta = -5;
   } else {
     satisfactionDelta = -2;
   }
 
-  const newNetworkSatisfaction = Math.min(100, Math.max(10, promotion.networkSatisfaction + satisfactionDelta));
+  // Include demands impact on broadcaster satisfaction
+  if (demandsOutcome) {
+    satisfactionDelta += demandsOutcome.satisfactionDelta;
+  }
+
+  let newNetworkSatisfaction = Math.min(100, Math.max(10, promotion.networkSatisfaction + satisfactionDelta));
 
   // 7. Update Tag Team Records
   const updatedTagTeams = (promotion.tagTeams || []).map(team => {
@@ -2071,6 +2309,13 @@ export function advanceWeekEngine(
   showResult.companyPrestigeEarned = totalPrestigeEarnedTonight;
   showResult.farewellTourHighlights = farewellHighlights;
 
+  // 12. Simulate AI Rival Promotion Ratings Battle
+  const ratingsWarOutcome = simulateWeeklyRatingsWar(promotion, showResult, currentWeek, currentYear);
+  showResult.rivalWarBattle = ratingsWarOutcome.battleResult;
+  newNews.push(...ratingsWarOutcome.warNews);
+  endingBalance += ratingsWarOutcome.bonusRightsCash;
+  newNetworkSatisfaction = Math.min(100, Math.max(10, newNetworkSatisfaction + ratingsWarOutcome.networkSatisfactionDelta));
+
   const updatedPromotion: Promotion = {
     ...promotion,
     prestige: Math.min(100, Math.max(10, currentPrestige)),
@@ -2104,7 +2349,11 @@ export function advanceWeekEngine(
     activeBiddingWars: remainingActiveWars,
     resolvedBiddingWars,
     wrestlerCourtCases: updatedCourtCases,
-    resolvedCourtCases: updatedResolvedCourtCases
+    resolvedCourtCases: updatedResolvedCourtCases,
+    ratingsWar: ratingsWarOutcome.updatedRatingsWar,
+    tvDeal: updatedTvDeal,
+    tvNetwork: updatedTvDeal.networkName,
+    minNetworkRating: updatedTvDeal.minRatingTarget
   };
 
   return {

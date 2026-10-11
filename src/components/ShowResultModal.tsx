@@ -11,7 +11,10 @@ import {
   CheckCircle, 
   TrendingUp, 
   Flame, 
-  AlertTriangle 
+  AlertTriangle,
+  Swords,
+  CheckCircle2,
+  ShieldAlert
 } from 'lucide-react';
 
 interface ShowResultModalProps {
@@ -103,13 +106,80 @@ export const ShowResultModal: React.FC<ShowResultModalProps> = ({
           </div>
         </div>
 
-        {/* Network Memo */}
-        <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 flex items-start gap-3">
-          <Tv className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-xs font-mono">
-            <span className="text-zinc-400 uppercase font-sans font-bold">Network Executive Memo:</span>
-            <p className="text-zinc-200 mt-0.5 leading-relaxed font-sans">{showResult.networkFeedback}</p>
+        {/* Network Memo & TV Demands Breakdown */}
+        <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3 font-mono text-xs">
+          <div className="flex items-start gap-3">
+            <Tv className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="text-zinc-400 uppercase font-sans font-bold">Network Executive Memo:</span>
+              <p className="text-zinc-200 mt-0.5 leading-relaxed font-sans">{showResult.networkFeedback}</p>
+            </div>
           </div>
+
+          {showResult.tvDealOutcome && (
+            <div className="pt-3 border-t border-zinc-800/80 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800/60 font-bold uppercase">
+                    {showResult.tvDealOutcome.networkName}
+                  </span>
+                  <span className="text-zinc-400 font-sans">
+                    Ad Tier: <strong className="text-zinc-200">{showResult.tvDealOutcome.adRevenueTier}</strong>
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-emerald-400 font-bold">
+                    Rights: +${formatNumber(showResult.tvDealOutcome.rightsFeePaid)}
+                  </span>
+                  <span className="text-emerald-300 font-bold">
+                    Ads: +${formatNumber(showResult.tvDealOutcome.adRevenueEarned)}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    showResult.tvDealOutcome.netRatingModifier >= 0 
+                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' 
+                      : 'bg-rose-950 text-rose-400 border border-rose-800'
+                  }`}>
+                    {showResult.tvDealOutcome.netRatingModifier >= 0 ? '+' : ''}{showResult.tvDealOutcome.netRatingModifier} Rating Impact
+                  </span>
+                </div>
+              </div>
+
+              {showResult.tvDealOutcome.demandResults && showResult.tvDealOutcome.demandResults.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[10px] uppercase font-sans font-semibold text-zinc-400 flex items-center justify-between">
+                    <span>Mandated Broadcast Demands ({showResult.tvDealOutcome.demandsMetCount}/{showResult.tvDealOutcome.demandsTotalCount} Met):</span>
+                    <span className="text-zinc-400">{showResult.tvDealOutcome.weeksRemainingOnContract} Wks Left on Contract</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {showResult.tvDealOutcome.demandResults.map((dr, idx) => (
+                      <div 
+                        key={idx}
+                        className={`p-2 rounded-lg border text-[11px] font-sans flex items-start gap-2 ${
+                          dr.met 
+                            ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-200' 
+                            : 'bg-rose-950/20 border-rose-800/40 text-rose-300'
+                        }`}
+                      >
+                        {dr.met ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                        )}
+                        <div>
+                          <div className="font-bold font-mono text-[10px] uppercase tracking-wide">
+                            {dr.demandTitle}
+                          </div>
+                          <div className="text-[10px] text-zinc-400 mt-0.5">
+                            {dr.impactDescription}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* GM Post-Show Debrief */}
@@ -129,6 +199,58 @@ export const ShowResultModal: React.FC<ShowResultModalProps> = ({
                 &ldquo;{showResult.gmFeedback.quote}&rdquo;
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Weekly Ratings War Battle Report */}
+        {showResult.rivalWarBattle && (
+          <div className={`p-4 rounded-xl border font-mono text-xs space-y-3 ${
+            showResult.rivalWarBattle.isPlayerWinner
+              ? 'bg-emerald-950/20 border-emerald-500/50'
+              : 'bg-rose-950/20 border-rose-500/50'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Swords className="w-4 h-4 text-amber-400" />
+                <span className="text-white font-bold uppercase tracking-wider">
+                  TELEVISION RATINGS WAR • HEAD-TO-HEAD BATTLE
+                </span>
+              </div>
+              <span className={`px-2.5 py-0.5 rounded font-bold uppercase text-[10px] flex items-center gap-1 ${
+                showResult.rivalWarBattle.isPlayerWinner
+                  ? 'bg-emerald-500 text-black'
+                  : 'bg-rose-500 text-white'
+              }`}>
+                {showResult.rivalWarBattle.isPlayerWinner ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>★ RATINGS VICTORY</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>⚠ RATINGS DEFEAT</span>
+                  </>
+                )}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-center">
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
+                <span className="text-[10px] text-zinc-500 uppercase">{promotion.shortName} Flagship</span>
+                <div className="text-base font-bold text-white mt-0.5">{showResult.tvRating} Rating</div>
+                <div className="text-[11px] text-sky-400">{formatNumber(showResult.rivalWarBattle.playerViewers)} Viewers</div>
+              </div>
+              <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
+                <span className="text-[10px] text-zinc-500 uppercase">{showResult.rivalWarBattle.rivals[0]?.rivalName || 'Rival'}</span>
+                <div className="text-base font-bold text-zinc-300 mt-0.5">{showResult.rivalWarBattle.rivals[0]?.rating} Rating</div>
+                <div className="text-[11px] text-zinc-400">{formatNumber(showResult.rivalWarBattle.rivals[0]?.viewers || 0)} Viewers</div>
+              </div>
+            </div>
+
+            <p className="text-zinc-300 font-sans text-xs leading-relaxed">
+              {showResult.rivalWarBattle.narrativeRecap}
+            </p>
           </div>
         )}
 
